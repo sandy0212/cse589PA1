@@ -25,6 +25,7 @@
 
 #include "../include/global.h"
 #include "../include/logger.h"
+#include "commands.h"
 
 using namespace std;
 
@@ -379,12 +380,13 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-	if(argv[1] == "s") { // If we want to be a server
+	if(strcmp(argv[1],"s") == 0) {
+		cse4589_print_and_log("Printing this just to check\n");	 // If we want to be a server
 		cse4589_print_and_log("About to create a server.\n");
 		server(argc, argv);
 	}
 
-	if(argv[1] == "c") {	// want to be a client
+	if(strcmp(argv[1],"c") == 0) {	// want to be a client
 		cse4589_print_and_log("About to create a client.\n");
 		client(argv);
 	}
