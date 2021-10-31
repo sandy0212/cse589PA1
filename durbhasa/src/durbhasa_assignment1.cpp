@@ -75,6 +75,9 @@ std::string extractCommand(std::string fullCommand) {
 
 int client(char **argv) {
 	int fdsocket;
+	struct client_info stat[5];
+	char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
+	memset(buffer, '\0', BUFFER_SIZE);
 	int socket_to_connect = -1;
 
 	while(TRUE) {
@@ -92,12 +95,15 @@ int client(char **argv) {
 		if(checkAnyLowerCase(command)) {
 			cse4589_print_and_log("The command should be given in all capital letters\n");
 		}
+
 		if("AUTHOR" == command) {
 			cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "durbhasa");
 		}
+
 		if("IP" == command) {
 			ip_command(command);
-		}		
+		}
+
 		if("PORT" == command) {
 			cse4589_print_and_log("PORT:%d\n", atoi(argv[2]));
 		}
@@ -159,6 +165,26 @@ int client(char **argv) {
 			if(connect(socket_to_connect, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
 				cse4589_print_and_log("Connect failed\n");
 			}	
+
+
+			if(recv(socket_to_connect, buffer, BUFFER_SIZE, 0) >= 0) { 
+				cse4589_print_and_log("Server responded: %s\n", buffer);
+				cse4589_print_and_log("%d size of stat\n",sizeof(stat));
+				memcpy(&stat,(struct client_info*)buffer,sizeof(stat));
+				fflush(stdout);
+			} else {
+				cse4589_print_and_log("RECVD NOTHIN\n");
+			}
+			
+			cse4589_print_and_log("|--------------------------------------------------------------------|\n");			
+			cse4589_print_and_log("| List ID    |           Host Name        | IP address     | Port No |\n");  
+			cse4589_print_and_log("|--------------------------------------------------------------------|\n"); 
+				
+			for(int i=0;i<5;i++) {
+				if((stat[i].sock_fd) != -1) {
+					cse4589_print_and_log("|     %-5d  |   %-25s| %-16s|%-8d|\n", stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);								}
+				}
+			cse4589_print_and_log("|--------------------------------------------------------------------|\n");
 		}
 
 
@@ -290,14 +316,16 @@ int server(int argc, char **argv) {
 			   				cse4589_print_and_log("PORT:%d\n",ntohs(addr.sin_port));
 						}
 						if (strcmp("LIST",command) == 0) {
+							cse4589_print_and_log("|--------------------------------------------------------------------|\n");			
+							cse4589_print_and_log("| List ID    |           Host Name        | IP address     | Port No |\n");  
+							cse4589_print_and_log("|--------------------------------------------------------------------|\n"); 
+				
 			   				for(int i=0;i<5;i++) {
 								if((client_record[i].sock_fd) != -1) {
-									// cse4589_print_and_log("client fd      = %d\n",client_record[i].sock_fd);
-									// cse4589_print_and_log("clientip addr  = %s\n",client_record[i].ip_addr);
-									// cse4589_print_and_log("client port    = %d\n",client_record[i].port_num);
-									cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", client_record[i].list_id, client_record[i].hostname, client_record[i].ip_addr, client_record[i].port_num);
+									cse4589_print_and_log("|     %-5d  |   %-25s| %-16s|%-8d|\n", client_record[i].list_id, client_record[i].hostname, client_record[i].ip_addr, client_record[i].port_num);								
 								}
 							}
+							cse4589_print_and_log("|--------------------------------------------------------------------|\n"); 					
 						}
 						free(commandWithNewLine);
 					} else if(sock_index == serv_fd) { /* Check if new client is requesting connection */
@@ -318,24 +346,38 @@ int server(int argc, char **argv) {
 					
 						cse4589_print_and_log("client socket %d", client_fd);
 						for(int i=0;i<5;i++) {
-						if((client_record[i].sock_fd) == -1) {
-							client_record[i].sock_fd = client_fd;	
-							//struct sockaddr_in client_addr;
-							//socklen_t len=sizeof(client_addr);
+							if((client_record[i].sock_fd) == -1) {
+								client_record[i].sock_fd = client_fd;	
+								//struct sockaddr_in client_addr;
+								//socklen_t len=sizeof(client_addr);
     							//int ret = getpeername(fdaccept, (struct sockaddr *)&client_addr, len);
-							//					cse4589_print_and_log("\n ret value %d",ret);
+								//cse4589_print_and_log("\n ret value %d",ret);
+								client_record[i].list_id=i+1;   								
    								client_record[i].port_num = ntohs(client_addr.sin_port);
+   								cse4589_print_and_log("client PORT:%hu\n",client_record[i].port_num);
 								client_record[i].loggedIn = true;
+								client_record[i].hostname = "krishnaaaaa";
 								strcpy(client_record[i].ip_addr, inet_ntoa(client_addr.sin_addr));
 
    								cse4589_print_and_log("CLIENT PORT ntohs:%d\n",ntohs(client_addr.sin_port));
 
    								cse4589_print_and_log("client ip:%s\n",client_record[i].ip_addr);
+
+   								cse4589_print_and_log("client name:%s\n",client_record[i].hostname);
 							
     							break;	
 							}
 						}
-					} else { /* Read from existing clients */
+
+						//once connect is successfull send the statistics
+						cse4589_print_and_log("BEFORE SEND\n");	
+						int a=0;
+						if(a=send(client_fd, (void*)&client_record, sizeof(client_record), 0) == sizeof(client_record)) {
+							cse4589_print_and_log("Done! bytes sent [%d] [%d\n", a, sizeof(client_record));
+						}
+						cse4589_print_and_log("AFTER SEND\n");
+					} else { 
+						/* Read from existing clients */
 						/* Initialize buffer to receieve response */
 						char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
 						memset(buffer, '\0', BUFFER_SIZE);
