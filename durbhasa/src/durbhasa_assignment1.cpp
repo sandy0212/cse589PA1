@@ -51,13 +51,26 @@ struct client_info {
 
 
 std::string extractCommand(std::string fullCommand) {
-	std::string firstWord = "";
-	int i = 0;
-	while(i<fullCommand.size() && fullCommand[i] != ' ') {
-		firstWord = firstWord + fullCommand[i];
+	// char *command1 = (char *) malloc(sizeof(char)*20);
+	// command1 = strtok(fullCommand, " ");
+	// char *command2 = (char *) malloc(sizeof(char)*20);
+	// command2 = strtok(fullCommand, "\n");
+
+	// if(command1==NULL) {
+	// 	cse4589_print_and_log("%s\n", command2);
+	// 	return command2;
+	// } else {
+	// 	cse4589_print_and_log("%s\n", command1);
+	// 	return command1;
+	// }
+
+	string ans = "";
+
+	for(int i=0;i<fullCommand.size();i++) {
+		if(fullCommand[i] == ' ') return ans;
+		ans = ans+fullCommand[i];
 	}
-	
-	return fullCommand;
+
 }
 
 int client(char **argv) {
@@ -65,26 +78,19 @@ int client(char **argv) {
 	int socket_to_connect = -1;
 
 	while(TRUE) {
-		std::string commandWithNewLine = "";
-		cin>>commandWithNewLine;
-		if(commandWithNewLine.size() <= 0) {
+		char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
+		memset(commandWithNewLine, '\0', CMD_SIZE);
+		if(fgets(commandWithNewLine, CMD_SIZE-1, stdin) == NULL) {
 			cse4589_print_and_log("Please input a command\n");
 		}
 
-		cse4589_print_and_log("Command with new line is %s\n", commandWithNewLine.c_str());
-
-		std::string commandDummy = "";
-		commandDummy = commandWithNewLine;
-		
-		std::string command = ""; 
-		cse4589_print_and_log("Command with new line is %s\n", commandDummy.c_str());
+		std::string commandDummy(commandWithNewLine, commandWithNewLine + strlen(commandWithNewLine)-1);
+		std::string command = "";
 		command = extractCommand(commandDummy);
-		cse4589_print_and_log("Command with new line is %s\n", commandWithNewLine.c_str());
-		cse4589_print_and_log("return from extract %s\n", command.c_str());
 
 		//CheckforCommonCommands
 		if(checkAnyLowerCase(command)) {
-		        cse4589_print_and_log("The command should be given in all capital letters\n");
+			cse4589_print_and_log("The command should be given in all capital letters\n");
 		}
 		if("AUTHOR" == command) {
 			cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "durbhasa");
@@ -107,9 +113,7 @@ int client(char **argv) {
 			// cse4589_print_and_log("CLIENT LIST OPTION\n");
 			
 		}
-
-		// free(commandWithNewLine);
-		cse4589_print_and_log("%s\n",command.c_str());
+		
 		if ("LOGIN" == command) {
 			cse4589_print_and_log("Inside LOGIN\n");
 			struct sockaddr_in serv_addr;
@@ -120,23 +124,25 @@ int client(char **argv) {
 
 			int it = 0;
 			int word = 0;
-			cse4589_print_and_log("Command with new line is %s\n", commandWithNewLine.c_str());
+			cse4589_print_and_log("Command dummy is %s\n", commandDummy.c_str());
 			string dummy = "";
-			while(it < commandWithNewLine.size()) {
-				if(command[it] == ' ') {
+			while(it < commandDummy.size()) {
+				if(commandDummy[it] == ' ') {
 					if(word == 0) {
+						word++;
+						dummy = "";
+					} else if(word == 1) {
 						serv_ip = dummy;
 						dummy = "";
 						word++;
-					} 
-					if(word == 1) {
-						serv_port = dummy;
-						dummy = "";
-						word++;
 					}
+				} else {
+					dummy += commandDummy[it];
 				}
 				it++;
 			}
+
+			serv_port = dummy;
 
 			cse4589_print_and_log("ip address is %s\n",serv_ip.c_str());
 			cse4589_print_and_log("port is %s\n", serv_port.c_str());
@@ -380,8 +386,7 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-	if(strcmp(argv[1],"s") == 0) {
-		cse4589_print_and_log("Printing this just to check\n");	 // If we want to be a server
+	if(strcmp(argv[1],"s") == 0) {	 // If we want to be a server
 		cse4589_print_and_log("About to create a server.\n");
 		server(argc, argv);
 	}
