@@ -51,19 +51,6 @@ struct client_info {
 
 
 std::string extractCommand(std::string fullCommand) {
-	// char *command1 = (char *) malloc(sizeof(char)*20);
-	// command1 = strtok(fullCommand, " ");
-	// char *command2 = (char *) malloc(sizeof(char)*20);
-	// command2 = strtok(fullCommand, "\n");
-
-	// if(command1==NULL) {
-	// 	cse4589_print_and_log("%s\n", command2);
-	// 	return command2;
-	// } else {
-	// 	cse4589_print_and_log("%s\n", command1);
-	// 	return command1;
-	// }
-
 	string ans = "";
 
 	for(int i=0;i<fullCommand.size();i++) {
@@ -149,10 +136,6 @@ int client(char **argv) {
 			}
 
 			serv_port = dummy;
-
-			cse4589_print_and_log("ip address is %s\n",serv_ip.c_str());
-			cse4589_print_and_log("port is %s\n", serv_port.c_str());
-
 			serv_addr.sin_addr.s_addr = inet_addr(serv_ip.c_str());
    			serv_addr.sin_port = htons(atoi(serv_port.c_str()));
 
@@ -164,27 +147,22 @@ int client(char **argv) {
 			/* Connect */
 			if(connect(socket_to_connect, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
 				cse4589_print_and_log("Connect failed\n");
-			}	
-
+			}
 
 			if(recv(socket_to_connect, buffer, BUFFER_SIZE, 0) >= 0) { 
 				cse4589_print_and_log("Server responded: %s\n", buffer);
 				cse4589_print_and_log("%d size of stat\n",sizeof(stat));
-				memcpy(&stat,(struct client_info*)buffer,sizeof(stat));
+				memcpy(&stat, (struct client_info*)buffer, sizeof(stat));
 				fflush(stdout);
 			} else {
 				cse4589_print_and_log("RECVD NOTHIN\n");
 			}
-			
-			cse4589_print_and_log("|--------------------------------------------------------------------|\n");			
-			cse4589_print_and_log("| List ID    |           Host Name        | IP address     | Port No |\n");  
-			cse4589_print_and_log("|--------------------------------------------------------------------|\n"); 
-				
+
 			for(int i=0;i<5;i++) {
 				if((stat[i].sock_fd) != -1) {
-					cse4589_print_and_log("|     %-5d  |   %-25s| %-16s|%-8d|\n", stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);								}
+					cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);
 				}
-			cse4589_print_and_log("|--------------------------------------------------------------------|\n");
+			}
 		}
 
 
@@ -299,8 +277,6 @@ int server(int argc, char **argv) {
 						memcpy(command, commandWithNewLine, strlen(commandWithNewLine)-1);
 						command[strlen(commandWithNewLine)-1] = '\0';
 
-						cse4589_print_and_log("Received the command %s\n", command);
-
 						//CheckforCommonCommands
 						if(checkAnyLowerCase(&command[0])) {
 						        cse4589_print_and_log("The command should be given in all capital letters\n");
@@ -316,16 +292,12 @@ int server(int argc, char **argv) {
 			   				cse4589_print_and_log("PORT:%d\n",ntohs(addr.sin_port));
 						}
 						if (strcmp("LIST",command) == 0) {
-							cse4589_print_and_log("|--------------------------------------------------------------------|\n");			
-							cse4589_print_and_log("| List ID    |           Host Name        | IP address     | Port No |\n");  
-							cse4589_print_and_log("|--------------------------------------------------------------------|\n"); 
 				
 			   				for(int i=0;i<5;i++) {
 								if((client_record[i].sock_fd) != -1) {
-									cse4589_print_and_log("|     %-5d  |   %-25s| %-16s|%-8d|\n", client_record[i].list_id, client_record[i].hostname, client_record[i].ip_addr, client_record[i].port_num);								
+									cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", client_record[i].list_id, client_record[i].hostname, client_record[i].ip_addr, client_record[i].port_num);								
 								}
-							}
-							cse4589_print_and_log("|--------------------------------------------------------------------|\n"); 					
+							} 					
 						}
 						free(commandWithNewLine);
 					} else if(sock_index == serv_fd) { /* Check if new client is requesting connection */
@@ -344,26 +316,17 @@ int server(int argc, char **argv) {
 							head_socket = client_fd;
 						}
 					
-						cse4589_print_and_log("client socket %d", client_fd);
+						cse4589_print_and_log("client socket %d\n", client_fd);
 						for(int i=0;i<5;i++) {
 							if((client_record[i].sock_fd) == -1) {
 								client_record[i].sock_fd = client_fd;	
-								//struct sockaddr_in client_addr;
-								//socklen_t len=sizeof(client_addr);
-    							//int ret = getpeername(fdaccept, (struct sockaddr *)&client_addr, len);
-								//cse4589_print_and_log("\n ret value %d",ret);
 								client_record[i].list_id=i+1;   								
    								client_record[i].port_num = ntohs(client_addr.sin_port);
-   								cse4589_print_and_log("client PORT:%hu\n",client_record[i].port_num);
+								cse4589_print_and_log("client network port is %d\n", client_addr.sin_port);
+								cse4589_print_and_log("client host port is %d\n", ntohs(client_addr.sin_port));
 								client_record[i].loggedIn = true;
 								client_record[i].hostname = "krishnaaaaa";
 								strcpy(client_record[i].ip_addr, inet_ntoa(client_addr.sin_addr));
-
-   								cse4589_print_and_log("CLIENT PORT ntohs:%d\n",ntohs(client_addr.sin_port));
-
-   								cse4589_print_and_log("client ip:%s\n",client_record[i].ip_addr);
-
-   								cse4589_print_and_log("client name:%s\n",client_record[i].hostname);
 							
     							break;	
 							}
@@ -372,6 +335,8 @@ int server(int argc, char **argv) {
 						//once connect is successfull send the statistics
 						cse4589_print_and_log("BEFORE SEND\n");	
 						int a=0;
+						// cse4589_print_and_log("client network port is %d\n", client_addr.sin_port);
+						cse4589_print_and_log("client host port that is saved is %d\n", ntohs(client_record[0].port_num));
 						if(a=send(client_fd, (void*)&client_record, sizeof(client_record), 0) == sizeof(client_record)) {
 							cse4589_print_and_log("Done! bytes sent [%d] [%d\n", a, sizeof(client_record));
 						}
@@ -424,17 +389,14 @@ int main(int argc, char **argv) {
 	/*Start Here*/
 
 	if(argc < 3) { // If we don't have the specified amount of args
-		cse4589_print_and_log("Invalid number of arguments.\n");
 		return -1;
 	}
 
 	if(strcmp(argv[1],"s") == 0) {	 // If we want to be a server
-		cse4589_print_and_log("About to create a server.\n");
 		server(argc, argv);
 	}
 
 	if(strcmp(argv[1],"c") == 0) {	// want to be a client
-		cse4589_print_and_log("About to create a client.\n");
 		client(argv);
 	}
 
