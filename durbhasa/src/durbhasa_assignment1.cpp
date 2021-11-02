@@ -26,7 +26,7 @@
 #include "../include/global.h"
 #include "../include/logger.h"
 #include "commands.h"
-
+#include <regex>
 using namespace std;
 
 
@@ -58,11 +58,24 @@ std::string extractCommand(std::string fullCommand) {
 		ans = ans+fullCommand[i];
 	}
 
+}	
+
+static bool customSort(struct client_info a, struct client_info b) {
+	return (a.port_num <= b.port_num);
+}
+
+void printSortedList(struct client_info *client_record, int activeClients) {
+	sort(client_record, client_record+activeClients, customSort);
+    for(int i=0;i<activeClients;i++) {
+        if((client_record[i].sock_fd) != -1) {
+            cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i+1, client_record[i].hostname, client_record[i].ip_addr, client_record[i].port_num);								
+        }
+    } 	
 }
 
 int client(char **argv) {
-	int fdsocket;
-	struct client_info stat[5];
+	int fdsocket, activeClients;
+	struct client_info *stat;
 	char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
 	memset(buffer, '\0', BUFFER_SIZE);
 	int socket_to_connect = -1;
@@ -96,15 +109,7 @@ int client(char **argv) {
 		}
 
 		if ("LIST" == command) {
-			// char *msg = (char*) malloc(sizeof(char)*MSG_SIZE);
-			// memset(msg, '\0', MSG_SIZE);
-			// sprintf(msg,"LIST OTHER CLIENTS");
-			// cse4589_print_and_log("LIST OTHER CLIENTS");
-			// if(send(fd, msg, strlen(msg), 0) == strlen(msg)) {
-			// 	cse4589_print_and_log("Done!\n");
-			// }
-			// cse4589_print_and_log("CLIENT LIST OPTION\n");
-			
+			printSortedList(stat, activeClients);
 		}
 		
 		if ("LOGIN" == command) {
@@ -136,6 +141,10 @@ int client(char **argv) {
 			}
 
 			serv_port = dummy;
+
+			cout<<serv_port<<endl;
+			cout<<serv_ip<<endl;
+			
 			serv_addr.sin_addr.s_addr = inet_addr(serv_ip.c_str());
    			serv_addr.sin_port = htons(atoi(serv_port.c_str()));
 
@@ -144,6 +153,19 @@ int client(char **argv) {
 				cse4589_print_and_log("Error creating socket\n");
 				return-1;
 			}
+
+
+			struct sockaddr_in my_addr1;
+			my_addr1.sin_family = AF_INET;
+			my_addr1.sin_addr.s_addr = INADDR_ANY;
+   			my_addr1.sin_port = htons(atoi(argv[2]));
+			my_addr1.sin_addr.s_addr = INADDR_ANY;
+			if (bind(socket_to_connect, (struct sockaddr*) &my_addr1, sizeof(struct sockaddr_in)) == 0) {
+				printf("Binded Correctly\n");
+			} else {
+				printf("BIND FAILED");
+			}
+
 			/* Connect */
 			if(connect(socket_to_connect, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
 				cse4589_print_and_log("Connect failed\n");
@@ -152,7 +174,8 @@ int client(char **argv) {
 			if(recv(socket_to_connect, buffer, BUFFER_SIZE, 0) >= 0) { 
 				cse4589_print_and_log("Server responded: %s\n", buffer);
 				cse4589_print_and_log("%d size of stat\n",sizeof(stat));
-				memcpy(&stat, (struct client_info*)buffer, sizeof(stat));
+				// memcpy(&stat, (struct client_info*)buffer, sizeof(stat));
+				stat = (struct client_info *) buffer;
 				fflush(stdout);
 			} else {
 				cse4589_print_and_log("RECVD NOTHIN\n");
@@ -172,10 +195,41 @@ int client(char **argv) {
 			cse4589_print_and_log("CLOSED\n");
 		}
 
-		fflush(stdout);
-	
-		
-	/*	
+
+		if("SEND" == command) {
+			// SEND <client-ip> <msg>
+			// Send message: <msg> to client with IP address: <client-ip>. <msg> can have a maximum length of 256 bytes and will consist of valid ASCII characters.
+
+			// Exceptions to be handled
+
+			// Invalid IP address.
+			// Valid IP address which does not exist in the local copy of the list of logged-in clients (This list may be outdated. Do not update it as a result of this check).
+			char *message = (char *) malloc(sizeof(char *) * MSG_SIZE);
+
+			string dummy = "";
+			while(it < commandDummy.size()) {
+				if(commandDummy[it] == ' ') {
+					if(word == 0) {
+						word++;
+						dummy = "";
+					} else if(word == 1) {
+						client_ip = dummy;
+						dummy = "";
+						word++;
+					}
+				} else {
+					dummy += commandDummy[it];
+				}
+				it++;
+			}
+
+			message = dummy;
+			if(a = send(server_fd, (void *) message, sizeof(message), 0) >= 0) {
+				
+			}
+		}
+			/*	
+
 		cse4589_print_and_log("I got: %s(size:%d chars)", msg, strlen(msg));
 		
 		cse4589_print_and_log("\nSENDing it to the remote server ... ");
@@ -192,6 +246,9 @@ int client(char **argv) {
 			fflush(stdout);
 		}
 		*/
+		
+
+		fflush(stdout);
 	}
 	// Else, if we were able to connect, try to send something.
 	cse4589_print_and_log("Returning from client function.\n");
@@ -202,7 +259,7 @@ int client(char **argv) {
 
 int server(int argc, char **argv) {
 	// Begin a server listening on the port given.
-	int head_socket, port_num = atoi(argv[2]), sock_index, caddr_len, client_fd=0;
+	int head_socket, port_num = atoi(argv[2]), sock_index, caddr_len, client_fd=0, activeClients = 0;
 	fd_set master_list, watch_list;
 	struct sockaddr_in addr,client_addr;
 
@@ -211,7 +268,7 @@ int server(int argc, char **argv) {
 	int serv_fd = socket(AF_INET,SOCK_STREAM, 0);
 	if(serv_fd == -1) {
 		cse4589_print_and_log("Error creating socket\n");
-		return-1;
+		return -1;
 	}
 	
 	memset(&addr, 0, sizeof(addr));
@@ -292,12 +349,7 @@ int server(int argc, char **argv) {
 			   				cse4589_print_and_log("PORT:%d\n",ntohs(addr.sin_port));
 						}
 						if (strcmp("LIST",command) == 0) {
-				
-			   				for(int i=0;i<5;i++) {
-								if((client_record[i].sock_fd) != -1) {
-									cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", client_record[i].list_id, client_record[i].hostname, client_record[i].ip_addr, client_record[i].port_num);								
-								}
-							} 					
+							printSortedList(client_record, activeClients);
 						}
 						free(commandWithNewLine);
 					} else if(sock_index == serv_fd) { /* Check if new client is requesting connection */
@@ -315,19 +367,23 @@ int server(int argc, char **argv) {
 						if(client_fd > head_socket)  {
 							head_socket = client_fd;
 						}
-					
+
+						activeClients++;
 						cse4589_print_and_log("client socket %d\n", client_fd);
 						for(int i=0;i<5;i++) {
 							if((client_record[i].sock_fd) == -1) {
 								client_record[i].sock_fd = client_fd;	
-								client_record[i].list_id=i+1;   								
    								client_record[i].port_num = ntohs(client_addr.sin_port);
 								cse4589_print_and_log("client network port is %d\n", client_addr.sin_port);
 								cse4589_print_and_log("client host port is %d\n", ntohs(client_addr.sin_port));
 								client_record[i].loggedIn = true;
-								client_record[i].hostname = "krishnaaaaa";
+								struct in_addr addr = (struct in_addr *)malloc(sizeof(in_addr));
+								struct hostent *he;
+								char *client_ip = inet_ntoa(client_addr.sin_addr);
+								inet_aton(client_ip, &addr);
+								he = gethostbyaddr(&addr, sizeof(addr), AF_INET);
+								client_record[i].hostname = he->h_name;
 								strcpy(client_record[i].ip_addr, inet_ntoa(client_addr.sin_addr));
-							
     							break;	
 							}
 						}
@@ -336,7 +392,7 @@ int server(int argc, char **argv) {
 						cse4589_print_and_log("BEFORE SEND\n");	
 						int a=0;
 						// cse4589_print_and_log("client network port is %d\n", client_addr.sin_port);
-						cse4589_print_and_log("client host port that is saved is %d\n", ntohs(client_record[0].port_num));
+						cse4589_print_and_log("client host port that is saved is %d\n", client_record[0].port_num);
 						if(a=send(client_fd, (void*)&client_record, sizeof(client_record), 0) == sizeof(client_record)) {
 							cse4589_print_and_log("Done! bytes sent [%d] [%d\n", a, sizeof(client_record));
 						}
@@ -354,6 +410,7 @@ int server(int argc, char **argv) {
 							for(int i=0;i<5;i++) {
 								if(client_record[i].sock_fd == sock_index) {
 									client_record[i].loggedIn = false;
+									activeClients--;
 								}
 							}
 							/* Remove from watched list */

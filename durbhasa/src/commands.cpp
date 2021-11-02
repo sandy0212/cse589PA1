@@ -20,7 +20,9 @@ int ip_command(std::string command) {
     serv.sin_port = htons(kDnsPort);
 
     if(connect(udp_sock_fd, (struct sockaddr *) &serv, sizeof(serv)) == -1) {
-        cse4589_print_and_log("unable to connect to the google server\n");			
+        cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+        cse4589_print_and_log("[%s:END]\n", command.c_str());
+        // cse4589_print_and_log("unable to connect to the google server\n");			
     }
 
     struct sockaddr_in name;
