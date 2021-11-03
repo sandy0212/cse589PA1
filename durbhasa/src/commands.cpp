@@ -70,3 +70,39 @@ bool checkAnyLowerCase(std::string command) {
 	}
 	return false;
 }
+
+
+int server_handle_send(std::string commandDummy) {
+
+			// SEND <client-ip> <msg>
+			// Send message: <msg> to client with IP address: <client-ip>. <msg> can have a maximum length of 256 bytes and will consist of valid ASCII characters.
+
+			// Exceptions to be handled
+
+			// Invalid IP address.
+			// Valid IP address which does not exist in the local copy of the list of logged-in clients (This list may be outdated. Do not update it as a result of this check).
+			//char *message = (char *) malloc(sizeof(char *) * MSG_SIZE);
+
+			int it = 0;
+			int word = 0;
+			char * client_ip = "";
+
+			char * dummy = "";
+			while(it < commandDummy.size()) {
+				if(commandDummy[it] == ' ') {
+					if(word == 0) {
+						word++;
+						dummy = "";
+					} else if(word == 1) {
+						client_ip = dummy;
+					dummy = "";
+					word++;
+					}
+				} else {
+					dummy += commandDummy[it];
+				}
+				it++;
+			}
+
+    return 0;
+}

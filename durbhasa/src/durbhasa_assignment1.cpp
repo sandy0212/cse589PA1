@@ -181,11 +181,11 @@ int client(char **argv) {
 				cse4589_print_and_log("RECVD NOTHIN\n");
 			}
 
-			for(int i=0;i<5;i++) {
-				if((stat[i].sock_fd) != -1) {
-					cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);
-				}
-			}
+			//for(int i=0;i<5;i++) {
+			//	if((stat[i].sock_fd) != -1) {
+			//		cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);
+			//	}
+			//}
 		}
 
 
@@ -197,63 +197,30 @@ int client(char **argv) {
 
 
 		if("SEND" == command) {
-			// SEND <client-ip> <msg>
-			// Send message: <msg> to client with IP address: <client-ip>. <msg> can have a maximum length of 256 bytes and will consist of valid ASCII characters.
+			// Send the entire message over the assumed established server fd to be handled by server
+			// Client does no further checking other than sending the command to server
+			char * message = commandWithNewLine;
 
-			// Exceptions to be handled
-
-			// Invalid IP address.
-			// Valid IP address which does not exist in the local copy of the list of logged-in clients (This list may be outdated. Do not update it as a result of this check).
-			char *message = (char *) malloc(sizeof(char *) * MSG_SIZE);
-
-			string dummy = "";
-			while(it < commandDummy.size()) {
-				if(commandDummy[it] == ' ') {
-					if(word == 0) {
-						word++;
-						dummy = "";
-					} else if(word == 1) {
-						client_ip = dummy;
-						dummy = "";
-						word++;
-					}
-				} else {
-					dummy += commandDummy[it];
-				}
-				it++;
+			int amount_sent = 0;
+			if(amount_sent = send(stat->sock_fd, (void *) message, sizeof(message), 0) >= 0) {
+				cse4589_print_and_log("Client sent: %s(size:%d chars)", amount_sent);
 			}
 
-			message = dummy;
-			if(a = send(server_fd, (void *) message, sizeof(message), 0) >= 0) {
-				
-			}
+			// See if we get a response from server for testing
+			char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
+			memset(buffer, '\0', BUFFER_SIZE);
+		
+			if(recv(stat->sock_fd, buffer, BUFFER_SIZE, 0) >= 0){
+				cse4589_print_and_log("Server responded: %s", buffer);
+				fflush(stdout);
 		}
-			/*	
-
-		cse4589_print_and_log("I got: %s(size:%d chars)", msg, strlen(msg));
-		
-		cse4589_print_and_log("\nSENDing it to the remote server ... ");
-		if(send(server, msg, strlen(msg), 0) == strlen(msg))
-			cse4589_print_and_log("Done!\n");
-		fflush(stdout);
-		
-
-		char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
-		memset(buffer, '\0', BUFFER_SIZE);
-		
-		if(recv(server, buffer, BUFFER_SIZE, 0) >= 0){
-			cse4589_print_and_log("Server responded: %s", buffer);
-			fflush(stdout);
 		}
-		*/
-		
-
+	
 		fflush(stdout);
 	}
-	// Else, if we were able to connect, try to send something.
+
 	cse4589_print_and_log("Returning from client function.\n");
 	//return 0;
-
 }
 
 
@@ -351,6 +318,10 @@ int server(int argc, char **argv) {
 						if (strcmp("LIST",command) == 0) {
 							printSortedList(client_record, activeClients);
 						}
+						if (strcmp("SEND", command) == 0) {
+							server_handle_send(command);
+						} 
+
 						free(commandWithNewLine);
 					} else if(sock_index == serv_fd) { /* Check if new client is requesting connection */
 						cse4589_print_and_log("Inside clients new connection if case\n");
@@ -377,10 +348,10 @@ int server(int argc, char **argv) {
 								cse4589_print_and_log("client network port is %d\n", client_addr.sin_port);
 								cse4589_print_and_log("client host port is %d\n", ntohs(client_addr.sin_port));
 								client_record[i].loggedIn = true;
-								struct in_addr addr = (struct in_addr *)malloc(sizeof(in_addr));
+								struct in_addr *addr = (struct in_addr *)malloc(sizeof(in_addr));
 								struct hostent *he;
 								char *client_ip = inet_ntoa(client_addr.sin_addr);
-								inet_aton(client_ip, &addr);
+								inet_aton(client_ip, addr);
 								he = gethostbyaddr(&addr, sizeof(addr), AF_INET);
 								client_record[i].hostname = he->h_name;
 								strcpy(client_record[i].ip_addr, inet_ntoa(client_addr.sin_addr));
