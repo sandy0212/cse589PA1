@@ -62,6 +62,14 @@ std::string extractCommand(std::string fullCommand) {
 	return ans;
 }	
 
+void *get_in_addr(struct sockaddr *sa){
+	if (sa->sa_family == AF_INET) {
+		return &(((struct sockaddr_in*)sa)->sin_addr);
+	}
+
+	return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
 static bool customSort(struct client_info a, struct client_info b) {
 	return (a.port_num <= b.port_num);
 }
@@ -182,11 +190,11 @@ int client(char **argv) {
 				cse4589_print_and_log("RECVD NOTHIN\n");
 			}
 
-			// for(int i=0;i<5;i++) {
-			// 	if((stat[i].sock_fd) != -1) {
-			// 		cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);
-			// 	}
-			// }
+			for(int i=0;i<5;i++) {
+				if((stat[i].sock_fd) != -1) {
+					cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);
+				}
+			}
 		}
 
 
@@ -198,27 +206,58 @@ int client(char **argv) {
 
 
 		if("SEND" == command) {
-			// Send the entire message over the assumed established server fd to be handled by server
-			// Client does no further checking other than sending the command to server
-			char * message = commandWithNewLine;
+			// SEND <client-ip> <msg>
+			// Send message: <msg> to client with IP address: <client-ip>. <msg> can have a maximum length of 256 bytes and will consist of valid ASCII characters.
 
-			int amount_sent = 0;
-			if(amount_sent = send(stat->sock_fd, (void *) message, sizeof(message), 0) >= 0) {
-				cse4589_print_and_log("Client sent: %s(size:%d chars)", amount_sent);
+			// Exceptions to be handled
+
+			// Invalid IP address.
+			// Valid IP address which does not exist in the local copy of the list of logged-in clients (This list may be outdated. Do not update it as a result of this check).
+
+			string dummy = "", client_ip = "", message = "";
+			int it=0, word = 0;
+			while(it < commandDummy.size()) {
+				if(commandDummy[it] == ' ') {
+					if(word == 0) {
+						word++;
+						dummy = "";
+					} else if(word == 1) {
+						client_ip = dummy;
+						dummy = "";
+						word++;
+					}
+				} else {
+					dummy += commandDummy[it];
+				}
+				it++;
 			}
 
-			// See if we get a response from server for testing
-			char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
-			memset(buffer, '\0', BUFFER_SIZE);
-		
-			if(recv(stat->sock_fd, buffer, BUFFER_SIZE, 0) >= 0){
-				cse4589_print_and_log("Server responded: %s", buffer);
-				fflush(stdout);
+			message = dummy;
+			// if(a = send(server_fd, (void *) message, sizeof(message), 0) >= 0) {
+				
+			// }
 		}
-		}
-	
-		fflush(stdout);
 	}
+
+	// 	cse4589_print_and_log("I got: %s(size:%d chars)", msg, strlen(msg));
+		
+	// 	cse4589_print_and_log("\nSENDing it to the remote server ... ");
+	// 	if(send(server, msg, strlen(msg), 0) == strlen(msg))
+	// 		cse4589_print_and_log("Done!\n");
+	// 	fflush(stdout);
+		
+
+	// 	char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
+	// 	memset(buffer, '\0', BUFFER_SIZE);
+		
+	// 		if(recv(stat->sock_fd, buffer, BUFFER_SIZE, 0) >= 0){
+	// 			cse4589_print_and_log("Server responded: %s", buffer);
+	// 			fflush(stdout);
+	// 	}
+	// 	}
+	
+	// 	fflush(stdout);
+	// }
 
 	cse4589_print_and_log("Returning from client function.\n");
 	//return 0;
@@ -361,12 +400,14 @@ int server(int argc, char **argv) {
 						}
 
 						//once connect is successfull send the statistics
-						cse4589_print_and_log("BEFORE SEND\n");	
-						int a=0;
-						// cse4589_print_and_log("client network port is %d\n", client_addr.sin_port);
-						cse4589_print_and_log("client host port that is saved is %d\n", client_record[0].port_num);
-						if(a=send(client_fd, (void*)&client_record, sizeof(client_record), 0) == sizeof(client_record)) {
-							cse4589_print_and_log("Done! bytes sent [%d] [%d\n", a, sizeof(client_record));
+						cse4589_print_and_log("BEFORE SEND\n");
+						char *testMsg = (char *) malloc(sizeof(char *) * BUFFER_SIZE);
+						testMsg = "Hello Sandy ! Just try directly";
+						cse4589_print_and_log("%s\n", testMsg);
+						int a;
+						a = send(client_fd, (void *) &testMsg, sizeof(testMsg), 0);
+						if( a == sizeof(testMsg)) {
+							cse4589_print_and_log("Done! bytes sent [%d]\n ", sizeof(testMsg));
 						}
 						cse4589_print_and_log("AFTER SEND\n");
 					} else { 
