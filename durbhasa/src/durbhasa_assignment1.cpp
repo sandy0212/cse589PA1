@@ -42,6 +42,10 @@ struct client_info {
 	int active_clients;
 };
 
+string port;
+string host_name;
+string ip;
+int server_fd;
 /**
  * main function
  *
@@ -263,73 +267,121 @@ int client(char **argv) {
 	//return 0;
 }
 
+void getHostNameIpAndPort(char *myPort) {
+	port = myPort;
+	char myHostName[1024];
+	gethostname(myHostName, sizeof(myHostName)-1);
+	host_name = myHostName;
 
-int server(int argc, char **argv) {
-	// Begin a server listening on the port given.
-	int head_socket, port_num = atoi(argv[2]), sock_index, caddr_len, client_fd=0, activeClients = 0;
-	fd_set master_list, watch_list;
-	struct sockaddr_in addr,client_addr;
+    char buffer[256];
+    size_t bufLen = 256;
 
-	struct client_info client_record[5];
+    int udp_sock_fd = socket(AF_INET,SOCK_DGRAM,0);
+    const char *kGoogleDnsIp = "8.8.8.8";
+    uint16_t kDnsPort = 53;
+    struct sockaddr_in googleServInfo;
+    memset(&googleServInfo, 0, sizeof(googleServInfo));
+    googleServInfo.sin_family = AF_INET;
+    googleServInfo.sin_addr.s_addr = inet_addr(kGoogleDnsIp);
+    googleServInfo.sin_port = htons(kDnsPort);
 
-	int serv_fd = socket(AF_INET,SOCK_STREAM, 0);
-	if(serv_fd == -1) {
-		cse4589_print_and_log("Error creating socket\n");
-		return -1;
-	}
-	
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_port = htons(port_num);
-  	addr.sin_addr.s_addr = 0;
- 	addr.sin_addr.s_addr = INADDR_ANY;
-  	addr.sin_family = AF_INET; 
-	
-	if(bind(serv_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in) ) == -1) {
-		cse4589_print_and_log("Error binding socket to the given port\n");
-		return -1;
+    if(connect(udp_sock_fd, (struct sockaddr *) &googleServInfo, sizeof(googleServInfo)) == -1) {
+		cse4589_print_and_log("Failed to connect with the Google server");
+    }
+
+    struct sockaddr_in name;
+    socklen_t namelen = sizeof(name);
+    if(getsockname(udp_sock_fd, (struct sockaddr *)&name, &namelen) == -1) {
+        cse4589_print_and_log("Failed to get the socket name of the host\n");
+    }
+    const char *myIp = inet_ntop(AF_INET, &name.sin_addr, buffer, bufLen);
+    ip = myIp;
+    close(udp_sock_fd);
+}
+
+void initializeServer(char **argv) {
+	getHostNameIpAndPort(argv[2]);
+
+	int status;
+  	struct addrinfo hints;
+  	memset(&hints, 0, sizeof hints);  
+  	hints.ai_family = AF_INET;        
+  	hints.ai_socktype = SOCK_STREAM;  
+  	hints.ai_flags = AI_PASSIVE;
+
+	struct addrinfo *addrInfo;
+
+  	if ((status = getaddrinfo(NULL, argv[2], &hints, &addrInfo)) != 0) {
+    	exit(1);
   	}
 
-	if(listen(serv_fd, BACKLOG) < 0) {
+	//Do we need set sock opt here ?
+  	
+	if(server_fd = socket(addrInfo->ai_family, addrInfo->ai_socktype, addrInfo->ai_protocol) == -1) {
+		cse4589_print_and_log("Error creating socket\n");
+		exit(-1);
+	}
+
+	if(bind(server_fd, (struct sockaddr *) &addrInfo, sizeof(struct sockaddr_in)) == -1) {
+		cse4589_print_and_log("Error binding socket to the given port\n");
+		exit(-1);
+  	}
+
+	if(listen(server_fd, BACKLOG) < 0) {
 		cse4589_print_and_log("Unable to listen to port.\n");
 		exit(-1);
-	} else {
-		cse4589_print_and_log("I am able to listen to port.\n");
-	}
+	} 
+	// else {
+	// 	cse4589_print_and_log("I am able to listen to port.\n");
+	// }
+}
+
+
+int server(int argc, char **argv) {
+	initializeServer(argv);
+	int sock_index, caddr_len, client_fd=0, activeClients = 0;
+	char buffer[65535];
+	fd_set watch_list, master_list;
+	struct sockaddr_in client_addr;
+	struct client_info client_record[5];
+	// int clientSockets[5] = {0};
 
 	/* Zero select FD sets */
 	FD_ZERO(&master_list);
 	FD_ZERO(&watch_list);
-	
-	
-	FD_SET(serv_fd, &master_list); /* Register the listening socket */
-	FD_SET(STDIN, &master_list); /* Register STDIN */
-	
-	head_socket = serv_fd;
+	int max_socket = server_fd;
 
 	for(int i=0;i<5;i++) {
-		client_record[i].sock_fd = -1;
+		client_record[i].sock_fd = 0;
 	}
 
 	while(true) {
-		memcpy(&watch_list, &master_list, sizeof(master_list));
-		// printf("\n[durbhasa-SERVER@CSE489/589]$ ");
-		fflush(stdout);
-		// cse4589_print_and_log("inside while\n");
-		/* select() system call. This will BLOCK */
-		struct timeval tv = {20, 0};
-		int selret = select(head_socket+1, &watch_list, NULL, NULL, &tv);
+		FD_ZERO(&watch_list);
+		FD_SET(server_fd, &master_list); /* Register the listening socket */
+		FD_SET(fileno(stdin), &master_list); /* Register STDIN */
+
+		// memcpy(&watch_list, &master_list, sizeof(master_list));
+		// fflush(stdout);
+		// struct timeval tv = {20, 0};
+
+		int selret = select(max_socket+1, &watch_list, NULL, NULL, NULL);
 		if(selret < 0) {
 			cse4589_print_and_log("select failed \n");
 			exit(-1);
 		}
+
+		for (int i = 0; i < 5; i++) {
+      		int client_sock_fd = client_record[i].sock_fd;
+      		if (client_sock_fd > 0) FD_SET(client_sock_fd, &watch_list);
+      		if (client_sock_fd > max_socket) max_socket = client_sock_fd;
+    	}
 		
-		cse4589_print_and_log("%d", selret);
 		if(selret > 0) {
 			/* Loop through socket descriptors to check which ones are ready */
-			for(sock_index=0; sock_index<=head_socket; sock_index+=1) {
-				if(FD_ISSET(sock_index, &watch_list)) {
+			// for(sock_index=0; sock_index <= max_socket; sock_index+=1) {
+				if(FD_ISSET(fileno(stdin), &watch_list)) {
 					/* Check if new command on STDIN */
-					if (sock_index == STDIN) {
+					// if (sock_index == STDIN) {
 						char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
 						memset(commandWithNewLine, '\0', CMD_SIZE);
 						if(fgets(commandWithNewLine, CMD_SIZE-1, stdin) == NULL) {
@@ -353,7 +405,7 @@ int server(int argc, char **argv) {
 							ip_command(command);
 						}		
 						if (strcmp("PORT",command) == 0) {
-			   				cse4589_print_and_log("PORT:%d\n",ntohs(addr.sin_port));
+			   				cse4589_print_and_log("PORT:%d\n", port);
 						}
 						if (strcmp("LIST",command) == 0) {
 							printSortedList(client_record, activeClients);
@@ -363,20 +415,20 @@ int server(int argc, char **argv) {
 						} 
 
 						free(commandWithNewLine);
-					} else if(sock_index == serv_fd) { /* Check if new client is requesting connection */
-						cse4589_print_and_log("Inside clients new connection if case\n");
+					}  else if(FD_ISSET(server_fd, &watch_list)) { /* Check if new client is requesting connection */
+						// cse4589_print_and_log("Inside clients new connection if case\n");
 						caddr_len = sizeof(client_addr);
-						client_fd = accept(serv_fd, (struct sockaddr *)&client_addr, (socklen_t *) &caddr_len);
+						client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *) &caddr_len);
 						if(client_fd < 0) {
-							perror("Accept failed.\n");
+							cse4589_print_and_log("Accept failed.\n");
 						}
 					
-						cse4589_print_and_log("Remote Host connected!\n");                        
+						// cse4589_print_and_log("Remote Host connected!\n");                        
 						
 						/* Add to socket list being watched */
 						FD_SET(client_fd, &master_list);
-						if(client_fd > head_socket)  {
-							head_socket = client_fd;
+						if(client_fd > max_socket)  {
+							max_socket = client_fd;
 						}
 
 						activeClients++;
@@ -445,10 +497,9 @@ int server(int argc, char **argv) {
 						free(buffer);
 					}
 				}
-			}
+			// }
 		}
-	}
-}	
+	}	
 
 int main(int argc, char **argv) {
 	cse4589_init_log(argv[2]);
