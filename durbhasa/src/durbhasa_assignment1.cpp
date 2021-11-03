@@ -39,6 +39,7 @@ struct client_info {
 	//own ?
     int sock_fd;
     bool loggedIn;
+	int active_clients;
 };
 
 /**
@@ -58,6 +59,7 @@ std::string extractCommand(std::string fullCommand) {
 		ans = ans+fullCommand[i];
 	}
 
+	return ans;
 }	
 
 static bool customSort(struct client_info a, struct client_info b) {
@@ -65,6 +67,7 @@ static bool customSort(struct client_info a, struct client_info b) {
 }
 
 void printSortedList(struct client_info *client_record, int activeClients) {
+	cout<<activeClients<<endl;
 	sort(client_record, client_record+activeClients, customSort);
     for(int i=0;i<activeClients;i++) {
         if((client_record[i].sock_fd) != -1) {
@@ -113,7 +116,6 @@ int client(char **argv) {
 		}
 		
 		if ("LOGIN" == command) {
-			cse4589_print_and_log("Inside LOGIN\n");
 			struct sockaddr_in serv_addr;
 			memset(&serv_addr, 0, sizeof(serv_addr));
 			serv_addr.sin_family = AF_INET;
@@ -122,7 +124,6 @@ int client(char **argv) {
 
 			int it = 0;
 			int word = 0;
-			cse4589_print_and_log("Command dummy is %s\n", commandDummy.c_str());
 			string dummy = "";
 			while(it < commandDummy.size()) {
 				if(commandDummy[it] == ' ') {
@@ -181,11 +182,11 @@ int client(char **argv) {
 				cse4589_print_and_log("RECVD NOTHIN\n");
 			}
 
-			//for(int i=0;i<5;i++) {
-			//	if((stat[i].sock_fd) != -1) {
-			//		cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);
-			//	}
-			//}
+			// for(int i=0;i<5;i++) {
+			// 	if((stat[i].sock_fd) != -1) {
+			// 		cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);
+			// 	}
+			// }
 		}
 
 
@@ -345,13 +346,13 @@ int server(int argc, char **argv) {
 							if((client_record[i].sock_fd) == -1) {
 								client_record[i].sock_fd = client_fd;	
    								client_record[i].port_num = ntohs(client_addr.sin_port);
-								cse4589_print_and_log("client network port is %d\n", client_addr.sin_port);
-								cse4589_print_and_log("client host port is %d\n", ntohs(client_addr.sin_port));
 								client_record[i].loggedIn = true;
-								struct in_addr *addr = (struct in_addr *)malloc(sizeof(in_addr));
+								client_record[i].active_clients = activeClients; 
+
+								struct in_addr addr;
 								struct hostent *he;
 								char *client_ip = inet_ntoa(client_addr.sin_addr);
-								inet_aton(client_ip, addr);
+								inet_aton(client_ip, &addr);
 								he = gethostbyaddr(&addr, sizeof(addr), AF_INET);
 								client_record[i].hostname = he->h_name;
 								strcpy(client_record[i].ip_addr, inet_ntoa(client_addr.sin_addr));
