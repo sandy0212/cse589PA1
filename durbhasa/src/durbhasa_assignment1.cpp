@@ -48,7 +48,7 @@ string port;
 string host_name;
 string ip;
 int server_fd;
-int client_fd;
+int client_fd = 0;
 
 vector<client_info> clientData;
 /**
@@ -121,9 +121,9 @@ void printSortedList(vector<client_info> clientData) {
 	sort(clientData.begin(), clientData.end(), customSort);
     for(int i=0;i<clientData.size();i++) {
         if((clientData[i].sock_fd) != -1) {
-            cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i+1, clientData[i].hostname, clientData[i].ip_addr, clientData[i].port_num);								
+            cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i+1, clientData[i].hostname.c_str(), clientData[i].ip_addr.c_str(), clientData[i].port_num);
         }
-    } 	
+    }
 }
 
 int client(char **argv) {
@@ -159,7 +159,6 @@ int client(char **argv) {
 		//Check for Common Commands
 
 		// if(selret > 0) {
-			cout<<"Insider selret"<<endl;
 			if(checkAnyLowerCase(command)) {
 				cse4589_print_and_log("The command should be given in all capital letters\n");
 			}
@@ -184,7 +183,7 @@ int client(char **argv) {
 
 			if ("LIST" == command) {
 				//TO DO after login done properly.
-				// printSortedList(stat, activeClients);
+				printSortedList(clientData);
 			}
 		
 			if ("LOGIN" == command) {
@@ -232,18 +231,8 @@ int client(char **argv) {
 					}
 				}
 
-				// Do we need to bind the socket on client side ?
-
-				// struct sockaddr_in my_addr1;
-				// my_addr1.sin_family = AF_INET;
-				// my_addr1.sin_addr.s_addr = INADDR_ANY;
-				// my_addr1.sin_port = htons(atoi(argv[2]));
-				// my_addr1.sin_addr.s_addr = INADDR_ANY;
-				// if (bind(socket_to_connect, (struct sockaddr*) &my_addr1, sizeof(struct sockaddr_in)) == 0) {
-				// 	printf("Binded Correctly\n");
-				// } else {
-				// 	printf("BIND FAILED");
-				// }
+				string msg = "LOGIN " + host_name + " " + ip + " " + port;
+  				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
 
 				vector<string> recvmsg, recvdata;
 				char temp[65535];
@@ -254,16 +243,7 @@ int client(char **argv) {
 
 				clientData.clear();
 				cout<<temp<<endl;
-
-
-				cse4589_print_and_log("Server responded: %s\n", buffer);
 				fflush(stdout);
-
-				// for(int i=0;i<5;i++) {
-				// 	if((stat[i].sock_fd) != -1) {
-				// 		cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",stat[i].list_id, stat[i].hostname, stat[i].ip_addr, stat[i].port_num);
-				// 	}
-				// }
 			}
 
 
@@ -302,35 +282,11 @@ int client(char **argv) {
 				}
 
 				message = dummy;
-				// if(a = send(server_fd, (void *) message, sizeof(message), 0) >= 0) {
-					
-				// }
 			}
 		// }
 		
 	}
 
-	// 	cse4589_print_and_log("I got: %s(size:%d chars)", msg, strlen(msg));
-		
-	// 	cse4589_print_and_log("\nSENDing it to the remote server ... ");
-	// 	if(send(server, msg, strlen(msg), 0) == strlen(msg))
-	// 		cse4589_print_and_log("Done!\n");
-	// 	fflush(stdout);
-		
-
-	// 	char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
-	// 	memset(buffer, '\0', BUFFER_SIZE);
-		
-	// 		if(recv(stat->sock_fd, buffer, BUFFER_SIZE, 0) >= 0){
-	// 			cse4589_print_and_log("Server responded: %s", buffer);
-	// 			fflush(stdout);
-	// 	}
-	// 	}
-	
-	// 	fflush(stdout);
-	// }
-
-	cse4589_print_and_log("Returning from client function.\n");
 	//return 0;
 }
 
@@ -395,6 +351,22 @@ client_info* getClientData(int client_fd) {
 	}
 
 	return NULL;
+}
+
+vector<string> extractLoginParams(string msg) {
+	vector<string> params;
+	string dummy = "";
+	for(int i=0;i<msg.size();i++) {
+		if(msg[i] == ' ' || msg[i] == '\n') {
+			params.push_back(dummy);
+			dummy = "";
+		} else {
+			dummy += msg[i];
+		}
+	}
+
+	params.push_back(dummy);
+	return params;
 }
 
 
@@ -487,29 +459,29 @@ int server(int argc, char **argv) {
 							cse4589_print_and_log("Accept failed.\n");
 						}
 					
-						cse4589_print_and_log("Remote Host connected!\n");
 						for (int i = 0; i < 5; i++) {
-        					if (clientSockets[i] == 0) {
+        					if(clientSockets[i] == 0) {
           						clientSockets[i] = new_client_fd;
           						break;
         					}
 						}
 
+						//Receive Login Request
+						recv(new_client_fd, buffer, sizeof(buffer), 0);
+						string msg = buffer;
+						vector<string> loginParams = extractLoginParams(msg);
+
 						//once connect is successfull send the statistics
 						client_info *clientInfo = getClientData(new_client_fd);
 						if(clientInfo == NULL) {
-							struct in_addr addr;
-							struct hostent *he;
-							char *client_ip = inet_ntoa(client_addr.sin_addr);
-							inet_aton(client_ip, &addr);
-							he = gethostbyaddr(&addr, sizeof(addr), AF_INET);
-							clientInfo = newClientInfo(new_client_fd,he->h_name, inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+							cout<<loginParams[1]<<" "<<loginParams[1]<<" "<<loginParams[2]<<" "<<loginParams[3]<<endl;
+							clientInfo = newClientInfo(client_fd, loginParams[1], loginParams[2], stoi(loginParams[3]));
 							clientData.push_back(*clientInfo);
 						} else {
 							clientInfo->loggedIn = true;
 						}
 
-						string msg = "LOGINSUCCESS\n";
+						msg = "LOGINSUCCESS\n";
 						for(int i=0;i<clientData.size();i++) {
 							if(clientData[i].loggedIn) {
 								msg += clientData[i].hostname + " " + clientData[i].ip_addr + " " + clientData[i].port + "\n";
