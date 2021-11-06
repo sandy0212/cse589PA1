@@ -26,7 +26,7 @@
 #include "../include/global.h"
 #include "../include/logger.h"
 #include "commands.h"
-#include <regex>
+#include "../include/PA1.h"
 using namespace std;
 
 
@@ -35,13 +35,16 @@ struct client_info {
 	string hostname;
 	string ip_addr;
 	int port_num;
+	int num_msg_sent;
+	int num_msg_rcv;
+	string status;
 
-	//own ?
+	//that need not be printed;
 	string port;
-	int msgSent;
-	int msgRecvd;
     int sock_fd;
     bool loggedIn;
+	vector<string> bufmsgs;
+	vector<string> blockedUser;
 };
 
 string port;
@@ -49,6 +52,7 @@ string host_name;
 string ip;
 int server_fd;
 int client_fd = 0;
+bool isLoggedIn = false;
 
 vector<client_info> clientData;
 /**
@@ -58,6 +62,72 @@ vector<client_info> clientData;
  * @param  argv The argument list
  * @return 0 EXIT_SUCCESS
  */
+
+
+client_info* newClientInfo(int sock_fd, string hostname, string ip, int port_num) {
+  client_info* client = new client_info;
+  client->sock_fd = sock_fd;
+  client->hostname = hostname;
+  client->ip_addr = ip;
+  client->port = to_string(port_num);
+  client->port_num = port_num;
+  client->num_msg_sent = 0;
+  client->num_msg_rcv = 0;
+  client->loggedIn = true;
+  client->status = "logged-in";
+  return client;
+}
+
+client_info* getClientData(int client_fd) {
+	for(int i=0;i<clientData.size();i++) {
+		if(clientData[i].sock_fd == client_fd) return &clientData[i];
+	}
+
+	return NULL;
+}
+
+client_info* getClientData(string ip) {
+	for(int i=0;i<clientData.size();i++) {
+		if(clientData[i].ip_addr == ip) return &clientData[i];
+	}
+
+	return NULL;
+}
+
+client_info* getClientData(string ip, string port) {
+	for(int i=0;i<clientData.size();i++) {
+		if(clientData[i].ip_addr == ip && clientData[i].port == port) return &clientData[i];
+	}
+
+	return NULL;
+}
+
+
+
+vector<string> extractParams(string msg, char sep) {
+	vector<string> params;
+	string dummy = "";
+	for(int i=0;i<msg.size();i++) {
+		if(msg[i] == sep) {
+			params.push_back(dummy);
+			dummy = "";
+		} else {
+			dummy += msg[i];
+		}
+	}
+
+	params.push_back(dummy);
+	return params;
+}
+
+bool checkIfIPBlocked(client_info* cd, string ip) {
+  for (int i = 0; i < cd->blockedUser.size(); i++) {
+    if (cd->blockedUser[i] == ip) {
+      return true;
+    }
+  }
+  return false;
+}
 
 
 void getHostNameIpAndPort(char *myPort) {
@@ -120,45 +190,64 @@ static bool customSort(struct client_info a, struct client_info b) {
 void printSortedList(vector<client_info> clientData) {
 	sort(clientData.begin(), clientData.end(), customSort);
     for(int i=0;i<clientData.size();i++) {
-        if((clientData[i].sock_fd) != -1) {
-            cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i+1, clientData[i].hostname.c_str(), clientData[i].ip_addr.c_str(), clientData[i].port_num);
-        }
+		cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i+1, clientData[i].hostname.c_str(), clientData[i].ip_addr.c_str(), clientData[i].port_num);
+    }
+}
+
+//Client utilities from here.
+
+void eventMsgRecv(vector<string> cmd, int cmdArgc, string orinmsg) {
+  
+}
+
+void handleClientEvents(const char* buffer){
+    string msg = buffer;
+    vector<string> params = extractParams(msg, ' ');
+    int paramCount = params.size();
+    // switch
+    if (params[0] == "SEND" && paramCount >= 3) {
+      	int nonMsgLen = params[0].length() + 2 + params[1].length();
+		string msg = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
+  		string ip = params[1];
+
+  		string event = "RECEIVED";
+  		cse4589_print_and_log("[%s:SUCCESS]\n", event.c_str());
+  		cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip.c_str(), msg.c_str());
+  		cse4589_print_and_log("[%s:END]\n", event.c_str());
     }
 }
 
 int client(char **argv) {
-
 	getHostNameIpAndPort(argv[2]);
-	int fdsocket, activeClients;
 	char buffer[65535];
 	fd_set watch_list;
-	int max_socket;
+	int max_socket = client_fd;
 
 	while(TRUE) {
 		FD_ZERO(&watch_list);
-    	FD_SET(fileno(stdin), &watch_list);
-    	FD_SET(max_socket, &watch_list);
-    	max_socket = client_fd;
-		char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
-		memset(commandWithNewLine, '\0', CMD_SIZE);
-		if(fgets(commandWithNewLine, CMD_SIZE-1, stdin) == NULL) {
-			cse4589_print_and_log("Please input a command\n");
+		FD_SET(fileno(stdin), &watch_list);
+		FD_SET(max_socket, &watch_list);
+		max_socket = client_fd;
+		memset(&buffer[0], 0, sizeof(buffer));
+
+		int selret = select(max_socket+ 1, &watch_list, NULL, NULL, NULL);
+
+		if(selret < 0) {
+			cse4589_print_and_log("select failed \n");
+			return -1;
 		}
 
-		std::string commandDummy(commandWithNewLine, commandWithNewLine + strlen(commandWithNewLine)-1);
-		std::string command = "";
-		command = extractCommand(commandDummy);
+		if(FD_ISSET(fileno(stdin), &watch_list)) {
+			char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
+			memset(commandWithNewLine, '\0', CMD_SIZE);
+			if(fgets(commandWithNewLine, CMD_SIZE-1, stdin) == NULL) {
+				cse4589_print_and_log("Please input a command\n");
+			}
 
-		// int selret = select(max_socket+ 1, &watch_list, NULL, NULL, NULL);
-
-		// if(selret < 0) {
-		// 	cse4589_print_and_log("select failed \n");
-		// 	exit(-1);
-		// }
-
-		//Check for Common Commands
-
-		// if(selret > 0) {
+			std::string commandDummy(commandWithNewLine, commandWithNewLine + strlen(commandWithNewLine)-1);
+			std::string command = "";
+			command = extractCommand(commandDummy);
+			
 			if(checkAnyLowerCase(command)) {
 				cse4589_print_and_log("The command should be given in all capital letters\n");
 			}
@@ -182,16 +271,17 @@ int client(char **argv) {
 			}
 
 			if ("LIST" == command) {
-				//TO DO after login done properly.
+				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				printSortedList(clientData);
+				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
-		
+			
 			if ("LOGIN" == command) {
 				// struct sockaddr_in serv_addr;
 				struct addrinfo hints, *servAddrInfo;
 				memset(&hints, 0, sizeof hints);
-  				hints.ai_family = AF_INET;
-  				hints.ai_socktype = SOCK_STREAM;
+				hints.ai_family = AF_INET;
+				hints.ai_socktype = SOCK_STREAM;
 
 				//Extract server ip and server port from commandDummy.
 				string serv_ip = "";
@@ -218,13 +308,13 @@ int client(char **argv) {
 
 				serv_port = dummy;
 
-  				if (client_fd == 0) {
-    				getaddrinfo(serv_ip.c_str(), serv_port.c_str(), &hints, &servAddrInfo);
-    				client_fd = socket(servAddrInfo->ai_family, servAddrInfo->ai_socktype, servAddrInfo->ai_protocol);
-    				if (client_fd == -1) {
+				if (client_fd == 0) {
+					getaddrinfo(serv_ip.c_str(), serv_port.c_str(), &hints, &servAddrInfo);
+					client_fd = socket(servAddrInfo->ai_family, servAddrInfo->ai_socktype, servAddrInfo->ai_protocol);
+					if (client_fd == -1) {
 						cse4589_print_and_log("Error creating socket\n");
 						return -1;
-    				}
+					}
 
 					if(connect(client_fd, servAddrInfo->ai_addr, servAddrInfo->ai_addrlen) < 0) {
 						cse4589_print_and_log("Connect failed\n");
@@ -232,9 +322,9 @@ int client(char **argv) {
 				}
 
 				string msg = "LOGIN " + host_name + " " + ip + " " + port;
-  				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
 
-				vector<string> recvmsg, recvdata;
+				vector<string> data;
 				char temp[65535];
 				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
 				if(recvSize < 0) { 
@@ -242,52 +332,219 @@ int client(char **argv) {
 				}
 
 				clientData.clear();
-				cout<<temp<<endl;
+				data = extractParams(temp, '-');
+
+				// receive list
+				it = 0;
+
+				for (it = 1; it < data.size()-1; it++) {
+					vector<string> clientString;
+					clientString = extractParams(data[it], ' ');
+					if (clientString.size() < 1 || clientString[0] == "LOGINEND") {
+						break;
+					}
+					client_info *clientInfo = newClientInfo(-1, clientString[0], clientString[1], stoi(clientString[2]));
+					clientData.push_back(*clientInfo);
+				}
+
+				// receive cached msg
+				for (;it < data.size()-1; it++) {
+					vector<string> receivedMessages;
+					receivedMessages = extractParams(data[it], ' ');
+					if (data.size() < 1 || data[0] == "LOGINCACHEEND") {
+						break;
+					}
+					handleClientEvents(data[it].c_str());
+				}
+
+				// cmdList(cmd);
+				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+				cse4589_print_and_log("[%s:END]\n", command.c_str());
 				fflush(stdout);
 			}
 
+			if("REFRESH" == command) {
+				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
 
-			if ("LOGOUT" == command) {
-				cse4589_print_and_log("BEFORE CLOSING\n");
-				close(client_fd);
-				cse4589_print_and_log("CLOSED\n");
+				vector<string> data;
+				char temp[65535];
+				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
+				if(recvSize < 0) { 
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+					return -1;
+				}
+
+				clientData.clear();
+				data = extractParams(temp, '-');
+
+				// receive list
+				int it = 0;
+
+				if (data.size() < 1 || data[0] != "REFRESHSUCCESS") {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+					return -1;
+				}
+
+
+				for (it = 1; it < data.size()-1; it++) {
+					vector<string> clientString;
+					clientString = extractParams(data[it], ' ');
+					if (clientString.size() < 1 || clientString[0] == "REFRESHEND") {
+						break;
+					}
+					client_info *clientInfo = newClientInfo(-1, clientString[0], clientString[1], stoi(clientString[2]));
+					clientData.push_back(*clientInfo);
+				}
+
+
+				// cmdList(cmd);
+				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
 
 			if("SEND" == command) {
-				// SEND <client-ip> <msg>
-				// Send message: <msg> to client with IP address: <client-ip>. <msg> can have a maximum length of 256 bytes and will consist of valid ASCII characters.
-
-				// Exceptions to be handled
-
-				// Invalid IP address.
-				// Valid IP address which does not exist in the local copy of the list of logged-in clients (This list may be outdated. Do not update it as a result of this check).
-
-				string dummy = "", client_ip = "", message = "";
-				int it=0, word = 0;
-				while(it < commandDummy.size()) {
-					if(commandDummy[it] == ' ') {
-						if(word == 0) {
-							word++;
-							dummy = "";
-						} else if(word == 1) {
-							client_ip = dummy;
-							dummy = "";
-							word++;
-						}
-					} else {
-						dummy += commandDummy[it];
-					}
-					it++;
+				vector<string> commandParams = extractParams(commandDummy, ' ');
+				if (getClientData(commandParams[1]) == NULL) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+					return -1;
+				}
+				
+				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
+				
+				char temp[65535];
+				vector<string> data;
+				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
+				string msg = temp;
+				if (recvSize < 0) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+					return -1;
 				}
 
-				message = dummy;
+				data = extractParams(msg, '-');
+
+				if (data[0] != "SENDSUCCESS" || data.size() < 1) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+					return -1;
+				}
+
+				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
-		// }
-		
+
+			if("BROADCAST" == command) {
+				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
+
+				char temp[65535];
+				vector<string> data;
+				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
+				string msg = temp;
+
+				if(recvSize < 0) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+					return -1;
+				}
+
+				data = extractParams(msg, '-');
+				if(data[0] != "BROADCASTSUCCESS" || data.size() < 1) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+					return -1;
+				}
+
+				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+				cse4589_print_and_log("[%s:END]\n", command.c_str());
+			}
+
+			if("BLOCK" == command && isLoggedIn) {
+				vector<string> commandParams = extractParams(commandDummy, ' ');
+
+				// if (checkIfIP(ip) < 0 || getHostData(ip) == NULL) {
+    			// 	cmdError(cmd);
+    			// 	return -1;
+  				// }
+  				string msg = command + " " + commandParams[1];
+  				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  				// receive all response
+  				char temp[65535];
+  				vector<string> data;
+  				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
+  				msg = temp;
+  				if (recvSize < 0) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+    				return -1;
+  				}
+
+  				data = extractParams(msg, '-');
+  				if (data[0] != "BLOCKSUCCESS" || data.size() < 1) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+    				return -1;
+  				}
+  				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+  				cse4589_print_and_log("[%s:END]\n", command.c_str());
+			}
+
+			if("UNBLOCK" == command && isLoggedIn) {
+				vector<string> commandParams = extractParams(commandDummy, ' ');
+				// if (checkIfIP(ip) < 0 || getHostData(ip) == NULL) {
+    			// 	cmdError(cmd);
+    			// 	return;
+  				// }
+  				string msg = command + " " + commandParams[1];
+  				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  				// receive all response
+  				char temp[65535];
+  				vector<string> data;
+  				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
+  				msg = temp;
+  				if (recvSize < 0) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+    				return -1;
+  				}
+  				data = extractParams(msg, '-');
+  				if (data[0] != "UNBLOCKSUCCESS" || data.size() < 1) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+    				return -1;
+  				}
+  				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+  				cse4589_print_and_log("[%s:END]\n", command.c_str());
+			}
+
+			if ("LOGOUT" == command) {
+				string msg = "LOGOUT " + ip + " " + port;
+  				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+  				cse4589_print_and_log("[%s:END]\n", command.c_str());
+			}
+
+			if("EXIT" == command) {
+				string msg = "EXIT";
+  				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+  				cse4589_print_and_log("[%s:END]\n", command.c_str());
+			}
+
+		} else if (FD_ISSET(client_fd, &watch_list)) {
+			if(recv(client_fd, buffer, sizeof(buffer), 0) == 0) {
+				close(client_fd);
+				client_fd = 0;
+			} else {
+				handleClientEvents(buffer);
+			}
+		}
 	}
 
-	//return 0;
+	return 0;
 }
 
 void initializeServer(char **argv) {
@@ -332,66 +589,133 @@ void initializeServer(char **argv) {
 	// }
 }
 
-client_info* newClientInfo(int sock_fd, string hostname, string ip, int port_num) {
-  client_info* client = new client_info;
-  client->sock_fd = sock_fd;
-  client->hostname = hostname;
-  client->ip_addr = ip;
-  client->port = to_string(port_num);
-  client->port_num = port_num;
-  client->msgSent = 0;
-  client->msgRecvd = 0;
-  client->loggedIn = true;
-  return client;
-}
+void handleServerEvents(const char *buffer, int new_client_fd) {
+	string msg = buffer;
+	vector<string> commandParams = extractParams(msg, ' ');
+	int numberOfParams = commandParams.size();
+	if (commandParams[0] == "SEND" && numberOfParams >= 3) {
+		string event = "RELAYED";
+  		client_info* sender_cd = getClientData(new_client_fd);
+  		string senderIP = sender_cd->ip_addr;
+  		int nonMsgLen = commandParams[0].length() + 2 + commandParams[1].length();
+  		string info = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
+  		string receiverIP = commandParams[1];
+  		client_info* receiver_cd = getClientData(receiverIP);
+  		if (receiver_cd != NULL && checkIfIPBlocked(receiver_cd, senderIP) == false) {
+    		if (receiver_cd->status == "logged-in") {
+      			send(receiver_cd->sock_fd, info.c_str(), strlen(info.c_str()), 0);
+    		} else {
+      			receiver_cd->bufmsgs.push_back(info);
+    		}
+    		receiver_cd->num_msg_rcv++;
+  		}
+  		sender_cd->num_msg_sent++;
+	    msg = "SENDSUCCESS-";
+  		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
 
-client_info* getClientData(int client_fd) {
-	for(int i=0;i<clientData.size();i++) {
-		if(clientData[i].sock_fd == client_fd) return &clientData[i];
+  		info = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
+  		cse4589_print_and_log("[%s:SUCCESS]\n", event.c_str());
+  		cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", senderIP.c_str(), receiverIP.c_str(), info.c_str());
+  		cse4589_print_and_log("[%s:END]\n", event.c_str());
+  	} 
+	else if(commandParams[0] == "REFRESH" && numberOfParams == 1) {
+		string msg = "REFRESHSUCCESS-";
+		for(int i=0;i<clientData.size();i++) {
+			if(clientData[i].loggedIn) {
+				msg += clientData[i].hostname + " " + clientData[i].ip_addr + " " + clientData[i].port + "-";
+			}
+		}
+		msg+= "REFRESHEND-";
+		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
 	}
 
-	return NULL;
-}
+	else if(commandParams[0] == "BROADCAST" && numberOfParams == 1) {
+		string event = "RELAYED";
+  		client_info* sender_cd = getClientData(new_client_fd);
+  		string senderIP = sender_cd->ip_addr;
+  		int nonMsgLen = commandParams[0].length() + 1;
+  		string msg = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
 
-vector<string> extractLoginParams(string msg) {
-	vector<string> params;
-	string dummy = "";
-	for(int i=0;i<msg.size();i++) {
-		if(msg[i] == ' ' || msg[i] == '\n') {
-			params.push_back(dummy);
-			dummy = "";
-		} else {
-			dummy += msg[i];
+  		for (int i = 0; i < clientData.size(); i++) {
+    		if (clientData[i].sock_fd == new_client_fd) {
+      			clientData[i].num_msg_sent++;
+      			continue;
+    		}
+    		if(checkIfIPBlocked(&clientData[i], senderIP) == false){
+      			if (clientData[i].loggedIn) {
+        			send(clientData[i].sock_fd, msg.c_str(), strlen(msg.c_str()), 0);
+      			} else {
+        			clientData[i].bufmsgs.push_back(msg);
+      			}
+      			clientData[i].num_msg_rcv++;
+    		}
+  		}
+	}
+
+	else if(commandParams[0] == "BLOCK" && numberOfParams == 2) {
+		string destIP = commandParams[1];
+		string msg;
+  		client_info* dest_client_info = getClientData(destIP);
+  		client_info* sender_client_info = getClientData(new_client_fd);
+  		if (dest_client_info == NULL || checkIfIPBlocked(sender_client_info, destIP)) {
+    		msg = "BLOCKFAIL-";
+    		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+			return;
+  		}
+  		sender_client_info->blockedUser.push_back(destIP);
+
+  		msg = "BLOCKSUCCESS-";
+  		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+	}
+
+	else if(commandParams[0] == "UNBLOCK" && numberOfParams == 2) {
+		string destIP = commandParams[1];
+  		string msg;
+		client_info* dest_client_info = getClientData(destIP);
+  		client_info* sender_client_info = getClientData(new_client_fd);
+  		if (dest_client_info == NULL || !checkIfIPBlocked(sender_client_info, destIP)) {
+    		msg = "UNBLOCKFAIL-";
+    		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  		}
+  		for (int i = 0; i < sender_client_info->blockedUser.size(); i++) {
+    		if (sender_client_info->blockedUser[i] == destIP) {
+				sender_client_info->blockedUser.erase(sender_client_info->blockedUser.begin() + i--);
+    			break;
+			}
+		}
+
+  			msg = "UNBLOCKSUCCESS-";
+  			send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+	}
+
+	else if(commandParams[0] == "LOGOUT" && numberOfParams == 3) {
+		client_info* cd = getClientData(commandParams[1], commandParams[2]);
+  		cd->status = "logged-out";
+		cd->loggedIn = false;
+	}
+
+	else if (commandParams[0] == "EXIT" && numberOfParams == 1) {
+		for (int i = 0; i < clientData.size(); i++) {
+   		 	if (clientData[i].sock_fd == new_client_fd) clientData.erase(clientData.begin() + i--);
+    			return;
+  			}
 		}
 	}
-
-	params.push_back(dummy);
-	return params;
-}
 
 
 int server(int argc, char **argv) {
 	initializeServer(argv);
 	struct sockaddr_in client_addr; 
-	int sock_index, activeClients = 0;
 	char buffer[65535];
-	fd_set watch_list, master_list;
+	fd_set watch_list;
 
 	int clientSockets[5] = {0};
-
-	/* Zero select FD sets */
-	// FD_ZERO(&master_list);
-	// FD_ZERO(&watch_list);
 	int max_socket = server_fd;
 
 	while(true) {
 		FD_ZERO(&watch_list);
-		FD_SET(server_fd, &watch_list); /* Register the listening socket */
 		FD_SET(fileno(stdin), &watch_list); /* Register STDIN */
-
-		// memcpy(&watch_list, &master_list, sizeof(master_list));
-		// fflush(stdout);
-		// struct timeval tv = {20, 0};
+		FD_SET(server_fd, &watch_list);
 
 		for (int i = 0; i < 5; i++) {
       		int client_sock_fd = clientSockets[i];
@@ -399,132 +723,140 @@ int server(int argc, char **argv) {
       		if (client_sock_fd > max_socket) max_socket = client_sock_fd;
     	}
 
+		memset(&buffer[0], 0, sizeof(buffer));
 		int selret = select(max_socket+1, &watch_list, NULL, NULL, NULL);
+
 		if(selret < 0) {
 			cse4589_print_and_log("select failed \n");
 			exit(-1);
 		}
 		
 		if(selret > 0) {
-			/* Loop through socket descriptors to check which ones are ready */
-			// for(sock_index=0; sock_index <= max_socket; sock_index+=1) {
 				if(FD_ISSET(fileno(stdin), &watch_list)) {
-					/* Check if new command on STDIN */
-					// if (sock_index == STDIN) {
-						char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
-						memset(commandWithNewLine, '\0', CMD_SIZE);
-						if(fgets(commandWithNewLine, CMD_SIZE-1, stdin) == NULL) {
-							cse4589_print_and_log("Please input a command\n");
-							exit(-1);
-						}
+					char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
+					memset(commandWithNewLine, '\0', CMD_SIZE);
+					if(fgets(commandWithNewLine, CMD_SIZE-1, stdin) == NULL) {
+						cse4589_print_and_log("Please input a command\n");
+						exit(-1);
+					}
 
-						char *command = (char *) calloc(strlen(commandWithNewLine), sizeof(char));
-						memcpy(command, commandWithNewLine, strlen(commandWithNewLine)-1);
-						command[strlen(commandWithNewLine)-1] = '\0';
+					char *command = (char *) calloc(strlen(commandWithNewLine), sizeof(char));
+					memcpy(command, commandWithNewLine, strlen(commandWithNewLine)-1);
+					command[strlen(commandWithNewLine)-1] = '\0';
 
-						//CheckforCommonCommands867uy65
-						if(checkAnyLowerCase(&command[0])) {
-						    cse4589_print_and_log("The command should be given in all capital letters\n");
-						}
+					std::string commandDummy(commandWithNewLine, commandWithNewLine + strlen(commandWithNewLine)-1);
 
-						if(strcmp("AUTHOR",command) == 0) {
-							cse4589_print_and_log("[%s:SUCCESS]\n", command);
-							cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "durbhasa");
-							cse4589_print_and_log("[%s:END]\n", command);
-						}
-						if (strcmp("IP",command) == 0) {
-							cse4589_print_and_log("[%s:SUCCESS]\n", command);
-							cse4589_print_and_log("IP:%s\n", ip.c_str());
-							cse4589_print_and_log("[%s:END]\n", command);
-						}		
+					if(checkAnyLowerCase(&command[0])) {
+						cse4589_print_and_log("The command should be given in all capital letters\n");
+					}
 
-						if (strcmp("PORT",command) == 0) {
-							cse4589_print_and_log("[%s:SUCCESS]\n", command);
-			   				cse4589_print_and_log("PORT:%s\n", port.c_str());
-							cse4589_print_and_log("[%s:END]\n", command);
-						}
+					if(strcmp("AUTHOR",command) == 0) {
+						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+						cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "durbhasa");
+						cse4589_print_and_log("[%s:END]\n", command);
+					}
 
-						if (strcmp("LIST",command) == 0) {
-							printSortedList(clientData);
-						}
-						if (strcmp("SEND", command) == 0) {
-							server_handle_send(command);
-						} 
+					if (strcmp("IP",command) == 0) {
+						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+						cse4589_print_and_log("IP:%s\n", ip.c_str());
+						cse4589_print_and_log("[%s:END]\n", command);
+					}		
 
-						free(commandWithNewLine);
-					}  else if(FD_ISSET(server_fd, &watch_list)) { /* Check if new client is requesting connection */
-						socklen_t caddr_len = sizeof(client_addr);
-						int new_client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &caddr_len);
-						if(new_client_fd < 0) {
-							cse4589_print_and_log("Accept failed.\n");
+					if (strcmp("PORT",command) == 0) {
+						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+						cse4589_print_and_log("PORT:%s\n", port.c_str());
+						cse4589_print_and_log("[%s:END]\n", command);
+					}
+
+					if (strcmp("LIST",command) == 0) {
+						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+						printSortedList(clientData);
+						cse4589_print_and_log("[%s:END]\n", command);
+					}
+
+					if(strcmp("BLOCKED", command) == 0) {
+						vector<string> commandParams = extractParams(commandDummy, ' ');
+						// if (checkIfIP(ip) < 0 || getHostData(ip) == NULL) {
+    					// 	cmdError(cmd);
+						//     return;
+  						// }
+  						client_info* clientInfo = getClientData(commandParams[1]);
+
+  						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+  						for (int i = 0; i < clientInfo->blockedUser.size(); ++i) {
+    						client_info* hd = getClientData(clientInfo->blockedUser[i]);
+    						cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",i+1, hd->hostname.c_str(), hd->ip_addr.c_str(), hd->port_num);
+  						}
+						cse4589_print_and_log("[%s:END]\n", command);
+					}
+
+					if(strcmp("STATISTICS", command) == 0) {
+						vector<string> commandParams = extractParams(commandDummy, ' ');
+						for(int i=0; i<clientData.size(); i++) {
+							cse4589_print_and_log("%-5d%-35s%-8d%-8d%-8s\n", i+1, clientData[i].hostname.c_str(), clientData[i].num_msg_sent, clientData[i].num_msg_rcv, clientData[i].status.c_str());
 						}
+					}
+
+					free(commandWithNewLine);
+				} else if(FD_ISSET(server_fd, &watch_list)) { /* Check if new client is requesting connection */
+					socklen_t caddr_len = sizeof(client_addr);
+					int new_client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &caddr_len);
+					if(new_client_fd < 0) {
+						cse4589_print_and_log("Accept failed.\n");
+					}
 					
-						for (int i = 0; i < 5; i++) {
-        					if(clientSockets[i] == 0) {
-          						clientSockets[i] = new_client_fd;
-          						break;
-        					}
+					for (int i = 0; i < 5; i++) {
+						if(clientSockets[i] == 0) {
+							clientSockets[i] = new_client_fd;
+							break;
 						}
+					}
 
-						//Receive Login Request
-						recv(new_client_fd, buffer, sizeof(buffer), 0);
-						string msg = buffer;
-						vector<string> loginParams = extractLoginParams(msg);
+					//Receive Login Request
+					recv(new_client_fd, buffer, sizeof(buffer), 0);
+					string msg = buffer;
+					vector<string> loginParams = extractParams(msg, ' ');
 
-						//once connect is successfull send the statistics
+					if(loginParams[0] == "LOGIN" && loginParams.size() == 4) {
 						client_info *clientInfo = getClientData(new_client_fd);
 						if(clientInfo == NULL) {
-							cout<<loginParams[1]<<" "<<loginParams[1]<<" "<<loginParams[2]<<" "<<loginParams[3]<<endl;
-							clientInfo = newClientInfo(client_fd, loginParams[1], loginParams[2], stoi(loginParams[3]));
+							clientInfo = newClientInfo(new_client_fd, loginParams[1], loginParams[2], stoi(loginParams[3]));
 							clientData.push_back(*clientInfo);
 						} else {
 							clientInfo->loggedIn = true;
 						}
 
-						msg = "LOGINSUCCESS\n";
+						msg = "LOGINSUCCESS-";
 						for(int i=0;i<clientData.size();i++) {
 							if(clientData[i].loggedIn) {
-								msg += clientData[i].hostname + " " + clientData[i].ip_addr + " " + clientData[i].port + "\n";
+								msg += clientData[i].hostname + " " + clientData[i].ip_addr + " " + clientData[i].port + "-";
 							}
 						}
-						msg += "LOGINEND";
+						msg += "LOGINEND-";
+
+						for (int i = 0; i < clientInfo->bufmsgs.size(); ++i) {
+							msg += clientInfo->bufmsgs[i] + "-";
+						}
+						clientInfo->bufmsgs.clear();
+						msg += "LOGINCACHEEND-";
 						send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
-					} else { 
-						/* Read from existing clients */
-						/* Initialize buffer to receieve response */
-						char *buffer = (char*) malloc(sizeof(char)*BUFFER_SIZE);
-						memset(buffer, '\0', BUFFER_SIZE);
-						
-						if(recv(sock_index, buffer, BUFFER_SIZE, 0) <= 0) {
-							close(sock_index);
-							printf("Remote Host terminated connection!\n");
-							
-							for(int i=0;i<5;i++) {
-								if(clientData[i].sock_fd == sock_index) {
-									clientData[i].loggedIn = false;
-									activeClients--;
-								}
+					}
+				} else { 
+					for (int i = 0; i < 5; i++) {
+						int  new_client_fd = clientSockets[i];
+						if (FD_ISSET(new_client_fd, &watch_list)) {
+							memset(&buffer[0], 0, sizeof(buffer));
+							if (recv(new_client_fd, buffer, sizeof(buffer), 0) == 0) { 
+								// handleServerEvents("FORCEEXIT", cfd);
+								close(new_client_fd);
+								clientSockets[i] = 0;
+							} else { // handle events
+								handleServerEvents(buffer, new_client_fd);
 							}
-							/* Remove from watched list */
-							FD_CLR(sock_index, &master_list);
-						} else {
-							//Process incoming data from existing clients here...
-							printf("\nClient sent me: %s\n", buffer);
-							
-							if(strcmp(buffer,"LIST OTHER CLIENTS")==0) {
-								printf("ECHOing it back to the remote host ... ");	
-							}
-
-							if(send(client_fd, buffer, strlen(buffer), 0) == strlen(buffer)) {
-								printf("Done!\n");
-							}
-
-							fflush(stdout);
-						}						
-						free(buffer);
+						}
 					}
 				}
-			// }
+			}
 		}
 	}	
 
