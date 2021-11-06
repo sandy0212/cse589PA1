@@ -204,9 +204,9 @@ void handleClientEvents(const char* buffer){
     string msg = buffer;
     vector<string> params = extractParams(msg, ' ');
     int paramCount = params.size();
-    // switch
     if (params[0] == "SEND" && paramCount >= 3) {
       	int nonMsgLen = params[0].length() + 2 + params[1].length();
+		cout<<"Reached here on client 2 side"<<endl;
 		string msg = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
   		string ip = params[1];
 
@@ -417,8 +417,9 @@ int client(char **argv) {
 				
 				char temp[65535];
 				vector<string> data;
-				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
+				int recvSize = recv(client_fd, temp, strlen("SENDSUCESS-"), 0);
 				string msg = temp;
+				cout<<msg<<endl;
 				if (recvSize < 0) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
@@ -597,12 +598,17 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
 		string event = "RELAYED";
   		client_info* sender_cd = getClientData(new_client_fd);
   		string senderIP = sender_cd->ip_addr;
+		cout<<"Sender port num"<<" "<<sender_cd->port_num<<endl;
   		int nonMsgLen = commandParams[0].length() + 2 + commandParams[1].length();
+		cout<<nonMsgLen<<" "<<msg.size()<<endl;
   		string info = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
+		cout<<nonMsgLen<<" "<<msg.size()<<endl;
   		string receiverIP = commandParams[1];
   		client_info* receiver_cd = getClientData(receiverIP);
+		cout<<"Receiver port num"<<" "<<receiver_cd->port_num<<endl;
   		if (receiver_cd != NULL && checkIfIPBlocked(receiver_cd, senderIP) == false) {
     		if (receiver_cd->status == "logged-in") {
+				cout<<"I am sending info to client 2"<<endl;
       			send(receiver_cd->sock_fd, info.c_str(), strlen(info.c_str()), 0);
     		} else {
       			receiver_cd->bufmsgs.push_back(info);
@@ -610,9 +616,10 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
     		receiver_cd->num_msg_rcv++;
   		}
   		sender_cd->num_msg_sent++;
-	    msg = "SENDSUCCESS-";
-  		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
-
+	    string ack = "SENDSUCCESS-";
+  		send(new_client_fd, ack.c_str(), strlen(ack.c_str()), 0);
+		cout<<nonMsgLen<<" "<<msg.size()<<endl;
+		cout<<msg<<endl;
   		info = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
   		cse4589_print_and_log("[%s:SUCCESS]\n", event.c_str());
   		cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", senderIP.c_str(), receiverIP.c_str(), info.c_str());
@@ -715,7 +722,7 @@ int server(int argc, char **argv) {
 	while(true) {
 		FD_ZERO(&watch_list);
 		FD_SET(fileno(stdin), &watch_list); /* Register STDIN */
-		FD_SET(server_fd, &watch_list);
+		FD_SET(server_fd, &watch_list); /*listening socket*/
 
 		for (int i = 0; i < 5; i++) {
       		int client_sock_fd = clientSockets[i];
@@ -792,9 +799,11 @@ int server(int argc, char **argv) {
 
 					if(strcmp("STATISTICS", command) == 0) {
 						vector<string> commandParams = extractParams(commandDummy, ' ');
+						cse4589_print_and_log("[%s:SUCCESS]\n", command);
 						for(int i=0; i<clientData.size(); i++) {
 							cse4589_print_and_log("%-5d%-35s%-8d%-8d%-8s\n", i+1, clientData[i].hostname.c_str(), clientData[i].num_msg_sent, clientData[i].num_msg_rcv, clientData[i].status.c_str());
 						}
+						cse4589_print_and_log("[%s:END]\n", command);
 					}
 
 					free(commandWithNewLine);
@@ -845,9 +854,9 @@ int server(int argc, char **argv) {
 					for (int i = 0; i < 5; i++) {
 						int  new_client_fd = clientSockets[i];
 						if (FD_ISSET(new_client_fd, &watch_list)) {
-							memset(&buffer[0], 0, sizeof(buffer));
-							if (recv(new_client_fd, buffer, sizeof(buffer), 0) == 0) { 
-								// handleServerEvents("FORCEEXIT", cfd);
+							//Check if recv block ?
+							if (recv(new_client_fd, buffer, sizeof(buffer), 0) == 0) {
+								// handleServerEvents("FORCEEXIT", new_client_fd);
 								close(new_client_fd);
 								clientSockets[i] = 0;
 							} else { // handle events
