@@ -22,6 +22,9 @@
  */
 #include <iostream>
 #include <stdio.h>
+#include <vector>
+#include <string>
+#include <algorithm>
 
 #include "../include/global.h"
 #include "../include/logger.h"
@@ -207,13 +210,20 @@ void handleClientEvents(const char* buffer){
     if (params[0] == "SEND" && paramCount >= 3) {
       	int nonMsgLen = params[0].length() + 2 + params[1].length();
 		cout<<"Reached here on client 2 side"<<endl;
-		string msg = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
+		cout<<nonMsgLen<<endl;
+		cout<<msg.length()<<endl;
+		int val=msg.length() - nonMsgLen;
+		cout<<"\nlength if param[0]="<<params[0].length()<<"\t length of param[2]="<<params[1].length()<<"\nlen of param[2]="<<params[2].length()<<endl;
+		cout<<"\nmsg recvd is \n"<<msg<<"\nvalue="<<val<<endl;
+		string recvmsg = msg.substr(nonMsgLen,val);
+		cout<<"\nmsg recvd aft is %s\n"<<recvmsg<<endl;
   		string ip = params[1];
 
   		string event = "RECEIVED";
   		cse4589_print_and_log("[%s:SUCCESS]\n", event.c_str());
-  		cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip.c_str(), msg.c_str());
+  		cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip.c_str(), recvmsg.c_str());
   		cse4589_print_and_log("[%s:END]\n", event.c_str());
+  		fflush(stdout);
     }
 }
 
@@ -416,19 +426,25 @@ int client(char **argv) {
 				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
 				
 				char temp[65535];
-				vector<string> data;
+				vector<string> data_send;
 				int recvSize = recv(client_fd, temp, strlen("SENDSUCESS-"), 0);
-				string msg = temp;
-				cout<<msg<<endl;
+				string msg_send = temp;
+				cout<<msg_send<<endl;
 				if (recvSize < 0) {
+					cout<<"\ninside recv loop"<<endl;
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
 					return -1;
 				}
 
-				data = extractParams(msg, '-');
-
-				if (data[0] != "SENDSUCCESS" || data.size() < 1) {
+				data_send = extractParams(msg_send, '-');
+				string dat=data_send[0];
+				cout<<"\ndata send value"<<data_send[0]<<endl;
+				//for (int i=0; i<data_send.size();i++){
+    				//	cout << data_send[i] << endl;
+    				//	}
+				if ((data_send[0]!="SENDSUCCESSS") || (data_send.size() < 1)) {
+				cout<<"\ndata loop"<<endl;
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
 					return -1;
@@ -439,8 +455,13 @@ int client(char **argv) {
 			}
 
 			if("BROADCAST" == command) {
-				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
-
+				cse4589_print_and_log("\nBC 0");
+				int send_ret=send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), MSG_DONTWAIT);
+				if(send_ret <=0)
+				 {
+				 	cse4589_print_and_log("\nsend value less");
+				 }
+				cse4589_print_and_log("\nBC 1");
 				char temp[65535];
 				vector<string> data;
 				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
@@ -732,13 +753,14 @@ int server(int argc, char **argv) {
 
 		memset(&buffer[0], 0, sizeof(buffer));
 		int selret = select(max_socket+1, &watch_list, NULL, NULL, NULL);
-
+			cse4589_print_and_log("select after \n");
 		if(selret < 0) {
 			cse4589_print_and_log("select failed \n");
 			exit(-1);
 		}
 		
 		if(selret > 0) {
+					cse4589_print_and_log("select > 0\n");
 				if(FD_ISSET(fileno(stdin), &watch_list)) {
 					char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
 					memset(commandWithNewLine, '\0', CMD_SIZE);
