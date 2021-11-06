@@ -239,15 +239,16 @@ int client(char **argv) {
 		FD_SET(max_socket, &watch_list);
 		max_socket = client_fd;
 		memset(&buffer[0], 0, sizeof(buffer));
-
+			cse4589_print_and_log("\n activity in select level1");
 		int selret = select(max_socket+ 1, &watch_list, NULL, NULL, NULL);
-
+	cse4589_print_and_log("\n activity in select level2");
 		if(selret < 0) {
 			cse4589_print_and_log("select failed \n");
 			return -1;
 		}
 
 		if(FD_ISSET(fileno(stdin), &watch_list)) {
+			cse4589_print_and_log("\n activity in select level3");
 			char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
 			memset(commandWithNewLine, '\0', CMD_SIZE);
 			if(fgets(commandWithNewLine, CMD_SIZE-1, stdin) == NULL) {
@@ -420,7 +421,7 @@ int client(char **argv) {
 				if (getClientData(commandParams[1]) == NULL) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					continue;
 				}
 				
 				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
@@ -434,7 +435,7 @@ int client(char **argv) {
 					cout<<"\ninside recv loop"<<endl;
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					continue;
 				}
 
 				data_send = extractParams(msg_send, '-');
@@ -447,7 +448,7 @@ int client(char **argv) {
 				cout<<"\ndata loop"<<endl;
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					continue;
 				}
 
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
@@ -455,11 +456,13 @@ int client(char **argv) {
 			}
 
 			if("BROADCAST" == command) {
-				cse4589_print_and_log("\nBC 0");
-				int send_ret=send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), MSG_DONTWAIT);
+				cse4589_print_and_log("\n activity in select level4");
+				cse4589_print_and_log("\nBC 0-%s",commandDummy.c_str());
+				int send_ret=send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()),0);
 				if(send_ret <=0)
 				 {
 				 	cse4589_print_and_log("\nsend value less");
+				 	continue;
 				 }
 				cse4589_print_and_log("\nBC 1");
 				char temp[65535];
@@ -545,6 +548,8 @@ int client(char **argv) {
 			if ("LOGOUT" == command) {
 				string msg = "LOGOUT " + ip + " " + port;
   				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  				//FD_CLR(client_fd,&watch_list);
+  				//close(client_fd);
   				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
@@ -555,8 +560,9 @@ int client(char **argv) {
   				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
-
+	cse4589_print_and_log("\n activity in select level5");
 		} else if (FD_ISSET(client_fd, &watch_list)) {
+			cse4589_print_and_log("\n activity in select level6");
 			if(recv(client_fd, buffer, sizeof(buffer), 0) == 0) {
 				close(client_fd);
 				client_fd = 0;
