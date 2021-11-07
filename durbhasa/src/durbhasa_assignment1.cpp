@@ -488,8 +488,16 @@ int client(char **argv) {
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
-
-			if("BLOCK" == command && isLoggedIn) {
+			cse4589_print_and_log("\nDONT KNOW");
+				cse4589_print_and_log("\nBLOCK case 1-1 %s %d",command.c_str(),isLoggedIn);
+		//	if("BLOCK" == command && isLoggedIn) {
+			if("BLOCK" == command){
+							cse4589_print_and_log("\nBLOCK case 1-2 ");
+				client_info *clientInfo_b = getClientData(client_fd);
+				
+				if(clientInfo_b->loggedIn==true){	
+								cse4589_print_and_log("\nBLOCK case 1-3 %d",clientInfo_b->loggedIn);
+				cse4589_print_and_log("\nBLOCK case 1");
 				vector<string> commandParams = extractParams(commandDummy, ' ');
 
 				// if (checkIfIP(ip) < 0 || getHostData(ip) == NULL) {
@@ -497,7 +505,13 @@ int client(char **argv) {
     			// 	return -1;
   				// }
   				string msg = command + " " + commandParams[1];
-  				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  				cse4589_print_and_log("\nBLOCK case 2");
+  				
+  				if(send(client_fd, msg.c_str(), strlen(msg.c_str()), 0)<=0)
+  				{
+  					cse4589_print_and_log("\nBLOCK case 3 send fail");
+  					continue;
+  				}
   				// receive all response
   				char temp[65535];
   				vector<string> data;
@@ -518,6 +532,9 @@ int client(char **argv) {
   				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
+			else
+				cse4589_print_and_log("\nYou should be logged into Server to execute this command");
+		}
 
 			if("UNBLOCK" == command && isLoggedIn) {
 				vector<string> commandParams = extractParams(commandDummy, ' ');
