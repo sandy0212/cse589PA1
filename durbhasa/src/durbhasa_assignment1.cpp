@@ -25,6 +25,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <boost/lexical_cast.hpp>
 
 #include "../include/global.h"
 #include "../include/logger.h"
@@ -619,6 +620,7 @@ void initializeServer(char **argv) {
 
 void handleServerEvents(const char *buffer, int new_client_fd) {
 	string msg = buffer;
+						cse4589_print_and_log("GOING towards BCST\n");
 	vector<string> commandParams = extractParams(msg, ' ');
 	int numberOfParams = commandParams.size();
 	if (commandParams[0] == "SEND" && numberOfParams >= 3) {
@@ -663,27 +665,40 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
 		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
 	}
 
-	else if(commandParams[0] == "BROADCAST" && numberOfParams == 1) {
+	else if(commandParams[0] == "BROADCAST" && numberOfParams >1) {
 		string event = "RELAYED";
+		cse4589_print_and_log("server BROADCAST case\n");
   		client_info* sender_cd = getClientData(new_client_fd);
   		string senderIP = sender_cd->ip_addr;
+  		
+  		cse4589_print_and_log("server BROADCAST senderIP %s\n",senderIP.c_str());  		
+  		cse4589_print_and_log("server BROADCAST case1\n");
   		int nonMsgLen = commandParams[0].length() + 1;
-  		string msg = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
-
+  		cse4589_print_and_log("server BROADCAST case2 %d %d \n",nonMsgLen,msg.length());
+  		string ip=senderIP.c_str();
+  //		string msg;
+//  		msg+= "SEND "+ std::string(senderIP.c_str() + " " + std::string(msg.substr(nonMsgLen, msg.length() - nonMsgLen));
+		char *s=(char*)malloc(sizeof(char*)*256);
+		string substring=msg.substr(nonMsgLen,msg.length()-nonMsgLen);
+		sprintf(s,"SEND %s %s",senderIP.c_str(),substring.c_str());
+		std::string buff(s);
+		cse4589_print_and_log("server BROADCAST case4\n");
   		for (int i = 0; i < clientData.size(); i++) {
     		if (clientData[i].sock_fd == new_client_fd) {
       			clientData[i].num_msg_sent++;
       			continue;
     		}
+    		cse4589_print_and_log("server BROADCAST case5\n");
     		if(checkIfIPBlocked(&clientData[i], senderIP) == false){
       			if (clientData[i].loggedIn) {
-        			send(clientData[i].sock_fd, msg.c_str(), strlen(msg.c_str()), 0);
+        			send(clientData[i].sock_fd, buff.c_str(), strlen(buff.c_str()), 0);
       			} else {
-        			clientData[i].bufmsgs.push_back(msg);
+        			clientData[i].bufmsgs.push_back(buff);
       			}
       			clientData[i].num_msg_rcv++;
     		}
   		}
+  		cse4589_print_and_log("server BROADCAST case6\n");
 	}
 
 	else if(commandParams[0] == "BLOCK" && numberOfParams == 2) {
