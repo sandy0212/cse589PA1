@@ -25,8 +25,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
-#include <boost/lexical_cast.hpp>
-
+#include <fcntl.h>
 #include "../include/global.h"
 #include "../include/logger.h"
 #include "commands.h"
@@ -242,7 +241,7 @@ int client(char **argv) {
 		memset(&buffer[0], 0, sizeof(buffer));
 			cse4589_print_and_log("\n activity in select level1");
 		int selret = select(max_socket+ 1, &watch_list, NULL, NULL, NULL);
-	cse4589_print_and_log("\n activity in select level2");
+		cse4589_print_and_log("\n activity in select level2");
 		if(selret < 0) {
 			cse4589_print_and_log("select failed \n");
 			return -1;
@@ -459,6 +458,8 @@ int client(char **argv) {
 			if("BROADCAST" == command) {
 				cse4589_print_and_log("\n activity in select level4");
 				cse4589_print_and_log("\nBC 0-%s",commandDummy.c_str());
+				int status = fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
+
 				int send_ret=send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()),0);
 				if(send_ret <=0)
 				 {
@@ -468,10 +469,10 @@ int client(char **argv) {
 				cse4589_print_and_log("\nBC 1");
 				char temp[65535];
 				vector<string> data;
-				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
-				string msg = temp;
+			//	int recvSize = recv(client_fd, temp, sizeof(temp), 0);
+			//	string msg = temp;
 
-				if(recvSize < 0) {
+			/*	if(recvSize < 0) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
 					return -1;
@@ -483,7 +484,7 @@ int client(char **argv) {
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
 					return -1;
 				}
-
+			*/
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
@@ -685,13 +686,19 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
 		cse4589_print_and_log("server BROADCAST case4\n");
   		for (int i = 0; i < clientData.size(); i++) {
     		if (clientData[i].sock_fd == new_client_fd) {
+    		cse4589_print_and_log("server BROADCAST case4-1 %d value of send client fd\n",clientData[i].sock_fd);
       			clientData[i].num_msg_sent++;
       			continue;
     		}
-    		cse4589_print_and_log("server BROADCAST case5\n");
+    		
+    		cse4589_print_and_log("server BROADCAST case5 - %d\n",clientData[i].sock_fd);
     		if(checkIfIPBlocked(&clientData[i], senderIP) == false){
       			if (clientData[i].loggedIn) {
-        			send(clientData[i].sock_fd, buff.c_str(), strlen(buff.c_str()), 0);
+      			cse4589_print_and_log("server BROADCAST case5-1 %s %d\n",buff.c_str(),strlen(buff.c_str()));
+        			if(send(clientData[i].sock_fd, buff.c_str(), strlen(buff.c_str()), 0)<=0)
+        			{
+        				perror("BROADCAST SEND FAILURE\n");
+        			}
       			} else {
         			clientData[i].bufmsgs.push_back(buff);
       			}
