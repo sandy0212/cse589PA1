@@ -70,14 +70,24 @@ vector<client_info> clientData;
  * @return 0 EXIT_SUCCESS
  */
 
+string convertToString(int num) {
+	string ans = "";
+	while(num) {
+		int x = num%10;
+		char y = (char) (x + '0');
+		ans += y;
+		num = num/10;
+	}
+	return ans;
+}
 
 client_info* newClientInfo(int sock_fd, string hostname, string ip, int port_num) {
   client_info* client = new client_info;
   client->sock_fd = sock_fd;
   client->hostname = hostname;
   client->ip_addr = ip;
-  client->port = to_string(port_num);
   client->port_num = port_num;
+  client->port = convertToString(port_num);
   client->num_msg_sent = 0;
   client->num_msg_rcv = 0;
   client->loggedIn = true;
@@ -159,9 +169,7 @@ bool checkIfIPBlocked(client_info* cd, string ip) {
 
   for (int i = 0; i < cd->blockedUser.size(); i++) {
     if (cd->blockedUser[i] == ip) {
-    {
       return true;
-    }
     }
   }
   return false;
@@ -388,7 +396,7 @@ int client(char **argv) {
 					if (clientString.size() < 1 || clientString[0] == "LOGINEND") {
 						break;
 					}
-					client_info *clientInfo = newClientInfo(-1, clientString[0], clientString[1], stoi(clientString[2]));
+					client_info *clientInfo = newClientInfo(-1, clientString[0], clientString[1], atoi(clientString[2].c_str()));
 					clientData.push_back(*clientInfo);
 				}
 
@@ -440,7 +448,7 @@ int client(char **argv) {
 					if (clientString.size() < 1 || clientString[0] == "REFRESHEND") {
 						break;
 					}
-					client_info *clientInfo = newClientInfo(-1, clientString[0], clientString[1], stoi(clientString[2]));
+					client_info *clientInfo = newClientInfo(-1, clientString[0], clientString[1], atoi(clientString[2].c_str()));
 					clientData.push_back(*clientInfo);
 				}
 
@@ -669,7 +677,6 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
   		string info = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
   		string receiverIP = commandParams[1];
   		client_info* receiver_cd = getClientData(receiverIP);
-  		  		cse4589_print_and_log("\nSERVER block 2 -sender mean %s\n",senderIP.c_str());
   		if (receiver_cd != NULL && checkIfIPBlocked(receiver_cd, senderIP) == false) {
     		if (receiver_cd->status == "logged-in") {
       			send(receiver_cd->sock_fd, info.c_str(), strlen(info.c_str()), 0);
@@ -870,14 +877,11 @@ int server(int argc, char **argv) {
 
 
 					if("BLOCKED" == command && commandParams.size() == 2) {
-
-						vector<string> commandParams = extractParams(commandDummy, ' ');
-						
   						client_info* clientInfo = getClientData(commandParams[1]);
 
   						cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
-  						if(clientInfo !=NULL) {
-  							for (int i = 0; i < clientInfo->blockedUser.size(); ++i) {
+  						if(clientInfo != NULL) {
+  							for (int i = 0; i < clientInfo->blockedUser.size(); i++) {
     							client_info* hd = getClientData(clientInfo->blockedUser[i]);
     							cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",i+1, hd->hostname.c_str(), hd->ip_addr.c_str(), hd->port_num);
   							}
@@ -918,7 +922,7 @@ int server(int argc, char **argv) {
 					if(loginParams[0] == "LOGIN" && loginParams.size() == 4) {
 						client_info *clientInfo = getClientData(new_client_fd);
 						if(clientInfo == NULL) {
-							clientInfo = newClientInfo(new_client_fd, loginParams[1], loginParams[2], stoi(loginParams[3]));
+							clientInfo = newClientInfo(new_client_fd, loginParams[1], loginParams[2], atoi(loginParams[3].c_str()));
 							clientData.push_back(*clientInfo);
 							std::sort(clientData.begin(), clientData.end());
 						} else {
