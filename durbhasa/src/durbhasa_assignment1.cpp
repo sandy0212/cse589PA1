@@ -22,6 +22,7 @@
  */
 #include <iostream>
 #include <stdio.h>
+#include <fcntl.h>
 
 #include "../include/global.h"
 #include "../include/logger.h"
@@ -45,6 +46,10 @@ struct client_info {
     bool loggedIn;
 	vector<string> bufmsgs;
 	vector<string> blockedUser;
+
+	bool operator<(const client_info &rhs) const {
+    	return port_num < rhs.port_num;
+  }
 };
 
 string port;
@@ -183,12 +188,7 @@ void *get_in_addr(struct sockaddr *sa){
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-static bool customSort(struct client_info a, struct client_info b) {
-	return (a.port_num <= b.port_num);
-}
-
 void printSortedList(vector<client_info> clientData) {
-	sort(clientData.begin(), clientData.end(), customSort);
     for(int i=0;i<clientData.size();i++) {
 		cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i+1, clientData[i].hostname.c_str(), clientData[i].ip_addr.c_str(), clientData[i].port_num);
     }
@@ -206,13 +206,12 @@ void handleClientEvents(const char* buffer){
     int paramCount = params.size();
     if (params[0] == "SEND" && paramCount >= 3) {
       	int nonMsgLen = params[0].length() + 2 + params[1].length();
-		cout<<"Reached here on client 2 side"<<endl;
-		string msg = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
+		string newString = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
   		string ip = params[1];
 
   		string event = "RECEIVED";
   		cse4589_print_and_log("[%s:SUCCESS]\n", event.c_str());
-  		cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip.c_str(), msg.c_str());
+  		cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip.c_str(), newString.c_str());
   		cse4589_print_and_log("[%s:END]\n", event.c_str());
     }
 }
@@ -348,13 +347,14 @@ int client(char **argv) {
 				}
 
 				// receive cached msg
-				for (;it < data.size()-1; it++) {
+				while(it < data.size()-1) {
 					vector<string> receivedMessages;
 					receivedMessages = extractParams(data[it], ' ');
 					if (data.size() < 1 || data[0] == "LOGINCACHEEND") {
 						break;
 					}
 					handleClientEvents(data[it].c_str());
+					it++;
 				}
 
 				// cmdList(cmd);
@@ -398,6 +398,8 @@ int client(char **argv) {
 					clientData.push_back(*clientInfo);
 				}
 
+				data.clear();
+
 
 				// cmdList(cmd);
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
@@ -417,7 +419,7 @@ int client(char **argv) {
 				
 				char temp[65535];
 				vector<string> data;
-				int recvSize = recv(client_fd, temp, strlen("SENDSUCESS-"), 0);
+				int recvSize = recv(client_fd, temp, sizeof temp, 0);
 				string msg = temp;
 				cout<<msg<<endl;
 				if (recvSize < 0) {
@@ -434,30 +436,36 @@ int client(char **argv) {
 					return -1;
 				}
 
+				data.clear();
+
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
 			if("BROADCAST" == command) {
+				int status = fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
 				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
 
 				char temp[65535];
 				vector<string> data;
 				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
 				string msg = temp;
+				cout<<msg<<endl;
 
 				if(recvSize < 0) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					// return -1;
 				}
 
 				data = extractParams(msg, '-');
 				if(data[0] != "BROADCASTSUCCESS" || data.size() < 1) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					// return -1;
 				}
+
+				data.clear();
 
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
@@ -489,6 +497,8 @@ int client(char **argv) {
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
     				return -1;
   				}
+
+				data.clear();
   				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
@@ -517,6 +527,8 @@ int client(char **argv) {
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
     				return -1;
   				}
+
+				data.clear();
   				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
@@ -598,17 +610,12 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
 		string event = "RELAYED";
   		client_info* sender_cd = getClientData(new_client_fd);
   		string senderIP = sender_cd->ip_addr;
-		cout<<"Sender port num"<<" "<<sender_cd->port_num<<endl;
   		int nonMsgLen = commandParams[0].length() + 2 + commandParams[1].length();
-		cout<<nonMsgLen<<" "<<msg.size()<<endl;
   		string info = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
-		cout<<nonMsgLen<<" "<<msg.size()<<endl;
   		string receiverIP = commandParams[1];
   		client_info* receiver_cd = getClientData(receiverIP);
-		cout<<"Receiver port num"<<" "<<receiver_cd->port_num<<endl;
   		if (receiver_cd != NULL && checkIfIPBlocked(receiver_cd, senderIP) == false) {
     		if (receiver_cd->status == "logged-in") {
-				cout<<"I am sending info to client 2"<<endl;
       			send(receiver_cd->sock_fd, info.c_str(), strlen(info.c_str()), 0);
     		} else {
       			receiver_cd->bufmsgs.push_back(info);
@@ -618,13 +625,12 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
   		sender_cd->num_msg_sent++;
 	    string ack = "SENDSUCCESS-";
   		send(new_client_fd, ack.c_str(), strlen(ack.c_str()), 0);
-		cout<<nonMsgLen<<" "<<msg.size()<<endl;
-		cout<<msg<<endl;
   		info = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
   		cse4589_print_and_log("[%s:SUCCESS]\n", event.c_str());
   		cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", senderIP.c_str(), receiverIP.c_str(), info.c_str());
   		cse4589_print_and_log("[%s:END]\n", event.c_str());
   	} 
+
 	else if(commandParams[0] == "REFRESH" && numberOfParams == 1) {
 		string msg = "REFRESHSUCCESS-";
 		for(int i=0;i<clientData.size();i++) {
@@ -636,12 +642,12 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
 		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
 	}
 
-	else if(commandParams[0] == "BROADCAST" && numberOfParams == 1) {
+	else if(commandParams[0] == "BROADCAST" && numberOfParams >= 2) {
 		string event = "RELAYED";
   		client_info* sender_cd = getClientData(new_client_fd);
   		string senderIP = sender_cd->ip_addr;
   		int nonMsgLen = commandParams[0].length() + 1;
-  		string msg = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
+  		string info = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
 
   		for (int i = 0; i < clientData.size(); i++) {
     		if (clientData[i].sock_fd == new_client_fd) {
@@ -650,13 +656,21 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
     		}
     		if(checkIfIPBlocked(&clientData[i], senderIP) == false){
       			if (clientData[i].loggedIn) {
-        			send(clientData[i].sock_fd, msg.c_str(), strlen(msg.c_str()), 0);
+        			send(clientData[i].sock_fd, info.c_str(), strlen(info.c_str()), 0);
       			} else {
-        			clientData[i].bufmsgs.push_back(msg);
+        			clientData[i].bufmsgs.push_back(info);
       			}
       			clientData[i].num_msg_rcv++;
     		}
   		}
+
+		string ack = "BROADCASTSUCCESS-";
+  		send(client_fd, ack.c_str(), strlen(ack.c_str()), 0);
+
+  		ack = msg.substr(nonMsgLen, msg.length() - nonMsgLen);
+  		cse4589_print_and_log("[%s:SUCCESS]\n", event.c_str());
+  		cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", senderIP.c_str(), "255.255.255.255", msg.c_str());
+  		cse4589_print_and_log("[%s:END]\n", event.c_str());
 	}
 
 	else if(commandParams[0] == "BLOCK" && numberOfParams == 2) {
@@ -695,15 +709,22 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
   			send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
 	}
 
-	else if(commandParams[0] == "LOGOUT" && numberOfParams == 3) {
-		client_info* cd = getClientData(commandParams[1], commandParams[2]);
-  		cd->status = "logged-out";
-		cd->loggedIn = false;
-	}
+		else if(commandParams[0] == "LOGOUT" && numberOfParams == 3) {
+			client_info* cd = getClientData(commandParams[1], commandParams[2]);
+  			cd->status = "logged-out";
+			cd->loggedIn = false;
+		}
 
-	else if (commandParams[0] == "EXIT" && numberOfParams == 1) {
-		for (int i = 0; i < clientData.size(); i++) {
-   		 	if (clientData[i].sock_fd == new_client_fd) clientData.erase(clientData.begin() + i--);
+		else if (commandParams[0] == "EXIT" && numberOfParams == 1) {
+			for (int i = 0; i < clientData.size(); i++) {
+   		 		if (clientData[i].sock_fd == new_client_fd) clientData.erase(clientData.begin() + i--);
+    			return;
+  			}
+		}
+
+		else if(commandParams[0] == "FORCEEXIT" && numberOfParams == 1) {
+			for (int i = 0; i < clientData.size(); i++) {
+				if (clientData[i].sock_fd == client_fd) clientData.erase(clientData.begin() + i--);
     			return;
   			}
 		}
@@ -831,6 +852,7 @@ int server(int argc, char **argv) {
 						if(clientInfo == NULL) {
 							clientInfo = newClientInfo(new_client_fd, loginParams[1], loginParams[2], stoi(loginParams[3]));
 							clientData.push_back(*clientInfo);
+							std::sort(clientData.begin(), clientData.end());
 						} else {
 							clientInfo->loggedIn = true;
 						}
@@ -856,7 +878,7 @@ int server(int argc, char **argv) {
 						if (FD_ISSET(new_client_fd, &watch_list)) {
 							//Check if recv block ?
 							if (recv(new_client_fd, buffer, sizeof(buffer), 0) == 0) {
-								// handleServerEvents("FORCEEXIT", new_client_fd);
+								handleServerEvents("FORCEEXIT", new_client_fd);
 								close(new_client_fd);
 								clientSockets[i] = 0;
 							} else { // handle events
