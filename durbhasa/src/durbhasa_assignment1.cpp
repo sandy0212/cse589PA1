@@ -75,7 +75,7 @@ string convertToString(int num) {
 	while(num) {
 		int x = num%10;
 		char y = (char) (x + '0');
-		ans += y;
+		ans = y + ans;
 		num = num/10;
 	}
 	return ans;
