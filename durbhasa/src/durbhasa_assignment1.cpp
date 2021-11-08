@@ -130,6 +130,31 @@ vector<string> extractParams(string msg, char sep) {
 	return params;
 }
 
+bool checkIfIPExists(string str) {
+	int a = -1, b = -1, c = -1, d = -1;
+  	char tail[256];
+  	tail[0] = 0;
+  	int r = sscanf(str.c_str(), "%d.%d.%d.%d%s", &a, &b, &c, &d, tail);
+  	if (r == 4 && !tail[0] && a >= 0 && a <= 255 && b >= 0 && b <= 255 && c >= 0 && c <= 255 && d >= 0 && d <= 255) {
+		return 1;
+  	} else {
+    	return -1;
+  	}
+}
+
+int checkIfPortExists(string str) {
+	int a = -1;
+	char tail[256];
+	tail[0] = 0;
+	int r = sscanf(str.c_str(), "%d%s", &a, tail);
+	if (r == 1 && !tail[0] && a > 0 && a <= 65535) {
+		return 1;
+	}
+	else {
+		return -1;
+	}
+}
+
 bool checkIfIPBlocked(client_info* cd, string ip) {
 
   for (int i = 0; i < cd->blockedUser.size(); i++) {
@@ -256,36 +281,43 @@ int client(char **argv) {
 			std::string commandDummy(commandWithNewLine, commandWithNewLine + strlen(commandWithNewLine)-1);
 			std::string command = "";
 			command = extractCommand(commandDummy);
+			vector<string> commandParams = extractParams(commandDummy, ' ');
 
 			if(checkAnyLowerCase(command)) {
 				cse4589_print_and_log("The command should be given in all capital letters\n");
 			}
 
-			if("AUTHOR" == command) {
+			if("AUTHOR" == command && commandParams.size() == 1) {
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "durbhasa");
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
-			if("IP" == command) {
+			else if("IP" == command && commandParams.size() == 1) {
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				cse4589_print_and_log("IP:%s\n", ip.c_str());
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}	
 
-			if("PORT" == command) {
+			else if("PORT" == command && commandParams.size() == 1) {
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				cse4589_print_and_log("PORT:%s\n", port.c_str());
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
-			if ("LIST" == command) {
+			else if ("LIST" == command && commandParams.size() == 1 && isLoggedIn) {
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				printSortedList(clientData);
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 			
-			if ("LOGIN" == command) {
+			else if ("LOGIN" == command && commandParams.size() == 3) {
+
+			if (checkIfIPExists(ip) < 0 || checkIfPortExists(port) < 0) {
+				cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+				cse4589_print_and_log("[%s:END]\n", command.c_str());
+				continue;
+  			}
 
 				// struct sockaddr_in serv_addr;
 				struct addrinfo hints, *servAddrInfo;
@@ -325,11 +357,12 @@ int client(char **argv) {
 					client_fd = socket(servAddrInfo->ai_family, servAddrInfo->ai_socktype, servAddrInfo->ai_protocol);
 					if (client_fd == -1) {
 						cse4589_print_and_log("Error creating socket\n");
-						return -1;
+						continue;
 					}
 
 					if(connect(client_fd, servAddrInfo->ai_addr, servAddrInfo->ai_addrlen) < 0) {
 						cse4589_print_and_log("Connect failed\n");
+						continue;
 					}
 				}
 
@@ -341,8 +374,8 @@ int client(char **argv) {
 				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
 				if(recvSize < 0) { 
 					cse4589_print_and_log("Recv Failed\n");
+					continue;
 				}
-				isLoggedIn=true;
 				clientData.clear();
 				data = extractParams(temp, '-');
 
@@ -370,13 +403,13 @@ int client(char **argv) {
 					it++;
 				}
 
-				// cmdList(cmd);
+				isLoggedIn=true;
 				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 				fflush(stdout);
 			}
 
-			if("REFRESH" == command) {
+			else if("REFRESH" == command && commandParams.size() ==1 && isLoggedIn) {
 				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
 
 				vector<string> data;
@@ -385,7 +418,7 @@ int client(char **argv) {
 				if(recvSize < 0) { 
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					continue;
 				}
 
 				clientData.clear();
@@ -397,7 +430,7 @@ int client(char **argv) {
 				if (data.size() < 1 || data[0] != "REFRESHSUCCESS") {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					continue;
 				}
 
 
@@ -420,13 +453,13 @@ int client(char **argv) {
 			}
 
 
-			if("SEND" == command) {
-				vector<string> commandParams = extractParams(commandDummy, ' ');
-				if (getClientData(commandParams[1]) == NULL) {
+			else if("SEND" == command && commandParams.size() >= 3 && isLoggedIn) {
+
+				if (checkIfIPExists(ip) < 0 || getClientData(ip) == NULL) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
-				}
+    				continue;
+  				}
 				
 				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
 				
@@ -434,11 +467,10 @@ int client(char **argv) {
 				vector<string> data;
 				int recvSize = recv(client_fd, temp, sizeof temp, 0);
 				string msg = temp;
-				cout<<msg<<endl;
 				if (recvSize < 0) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					continue;
 				}
 
 				data = extractParams(msg, '-');
@@ -446,7 +478,7 @@ int client(char **argv) {
 				if (data[0] != "SENDSUCCESS" || data.size() < 1) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					return -1;
+					continue;
 				}
 
 				data.clear();
@@ -455,7 +487,7 @@ int client(char **argv) {
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
-			if("BROADCAST" == command) {
+			else if("BROADCAST" == command && commandParams.size() == 2 && isLoggedIn) {
 				int status = fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
 				send(client_fd, commandDummy.c_str(), strlen(commandDummy.c_str()), 0);
 
@@ -463,19 +495,19 @@ int client(char **argv) {
 				vector<string> data;
 				int recvSize = recv(client_fd, temp, sizeof(temp), 0);
 				string msg = temp;
-				cout<<msg<<endl;
+				// cout<<msg<<endl;
 
 				if(recvSize < 0) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					// return -1;
+					continue;
 				}
 
 				data = extractParams(msg, '-');
 				if(data[0] != "BROADCASTSUCCESS" || data.size() < 1) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-					// return -1;
+					continue;
 				}
 
 				data.clear();
@@ -484,13 +516,14 @@ int client(char **argv) {
 				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
-			if("BLOCK" == command && isLoggedIn) {
-				vector<string> commandParams = extractParams(commandDummy, ' ');
+			else if("BLOCK" == command && commandParams.size() == 2 &&  isLoggedIn) {
 
-				// if (checkIfIP(ip) < 0 || getHostData(ip) == NULL) {
-    			// 	cmdError(cmd);
-    			// 	return -1;
-  				// }
+				if (checkIfIPExists(ip) < 0 || getClientData(ip) == NULL) {
+					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+    				continue;
+  				}
+
   				string msg = command + " " + commandParams[1];
   				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
   				// receive all response
@@ -501,14 +534,14 @@ int client(char **argv) {
   				if (recvSize < 0) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-    				return -1;
+    				continue;
   				}
 
   				data = extractParams(msg, '-');
   				if (data[0] != "BLOCKSUCCESS" || data.size() < 1) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-    				return -1;
+    				continue;
   				}
 
 				data.clear();
@@ -516,12 +549,12 @@ int client(char **argv) {
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
-			if("UNBLOCK" == command && isLoggedIn) {
-				vector<string> commandParams = extractParams(commandDummy, ' ');
-				// if (checkIfIP(ip) < 0 || getHostData(ip) == NULL) {
-    			// 	cmdError(cmd);
-    			// 	return;
-  				// }
+			else if("UNBLOCK" == command && commandParams.size() == 2 && isLoggedIn) {
+				if (checkIfIPExists(ip) < 0 || getClientData(ip) == NULL) {
+					cse4589_print_and_log("[%s:ERROR]	\n", command.c_str());
+					cse4589_print_and_log("[%s:END]\n", command.c_str());
+    				continue;
+  				}
   				string msg = command + " " + commandParams[1];
   				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
   				// receive all response
@@ -532,13 +565,13 @@ int client(char **argv) {
   				if (recvSize < 0) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-    				return -1;
+    				continue;
   				}
   				data = extractParams(msg, '-');
   				if (data[0] != "UNBLOCKSUCCESS" || data.size() < 1) {
 					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
-    				return -1;
+    				continue;
   				}
 
 				data.clear();
@@ -546,7 +579,7 @@ int client(char **argv) {
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
-			if ("LOGOUT" == command) {
+			else if ("LOGOUT" == command && commandParams.size() ==1 && isLoggedIn) {
 				string msg = "LOGOUT " + ip + " " + port;
   				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
   				isLoggedIn=false;
@@ -556,12 +589,17 @@ int client(char **argv) {
   				client_fd=0;//krishhh+
 			}
 
-			if("EXIT" == command) {
+			else if("EXIT" == command && commandParams.size() == 1) {
 				string msg = "EXIT";
   				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
   				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
   				exit(0);//krishhh+
+			}
+
+			else {
+				cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+				cse4589_print_and_log("[%s:END]\n", command.c_str());
 			}
 
 		} else if (FD_ISSET(client_fd, &watch_list)) {
@@ -797,71 +835,64 @@ int server(int argc, char **argv) {
 						exit(-1);
 					}
 
-					char *command = (char *) calloc(strlen(commandWithNewLine), sizeof(char));
-					memcpy(command, commandWithNewLine, strlen(commandWithNewLine)-1);
-					command[strlen(commandWithNewLine)-1] = '\0';
 					std::string commandDummy(commandWithNewLine, commandWithNewLine + strlen(commandWithNewLine)-1);
-					std::string command_1 = ""; //krishhh+
-					command_1 = extractCommand(commandDummy);//krishhh+
-					strcpy(command,command_1.c_str()); //krishhh+
+					string command = ""; 
+					command = extractCommand(commandDummy);
+					vector<string> commandParams = extractParams(commandDummy, ' ');
 
 					if(checkAnyLowerCase(&command[0])) {
 						cse4589_print_and_log("The command should be given in all capital letters\n");
 					}
 
-					if(strcmp("AUTHOR",command) == 0) {
-						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+					if("AUTHOR" == command && commandParams.size() == 1) {
+						cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 						cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n", "durbhasa");
-						cse4589_print_and_log("[%s:END]\n", command);
+						cse4589_print_and_log("[%s:END]\n", command.c_str());
 					}
 
-					if (strcmp("IP",command) == 0) {
-						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+					if ("IP" == command && commandParams.size() == 1) {
+						cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 						cse4589_print_and_log("IP:%s\n", ip.c_str());
-						cse4589_print_and_log("[%s:END]\n", command);
+						cse4589_print_and_log("[%s:END]\n", command.c_str());
 					}		
 
-					if (strcmp("PORT",command) == 0) {
-						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+					if ("PORT" == command && commandParams.size() == 1) {
+						cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 						cse4589_print_and_log("PORT:%s\n", port.c_str());
-						cse4589_print_and_log("[%s:END]\n", command);
+						cse4589_print_and_log("[%s:END]\n", command.c_str());
 					}
 
-					if (strcmp("LIST",command) == 0) {
-						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+					if ("LIST" == command && commandParams.size() == 1) {
+						cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 						printSortedList(clientData);
-						cse4589_print_and_log("[%s:END]\n", command);
+						cse4589_print_and_log("[%s:END]\n", command.c_str());
 					}
 
 
-					if(strcmp("BLOCKED", command) == 0)
-					 {
+					if("BLOCKED" == command && commandParams.size() == 2) {
 
 						vector<string> commandParams = extractParams(commandDummy, ' ');
 						
   						client_info* clientInfo = getClientData(commandParams[1]);
 
-  						cse4589_print_and_log("[%s:SUCCESS]\n", command);
-  						if(clientInfo !=NULL) //krishhhh+++
-  						{//krishhhh+
+  						cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+  						if(clientInfo !=NULL) {
   							for (int i = 0; i < clientInfo->blockedUser.size(); ++i) {
     							client_info* hd = getClientData(clientInfo->blockedUser[i]);
     							cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",i+1, hd->hostname.c_str(), hd->ip_addr.c_str(), hd->port_num);
   							}
-						}//krishhhh+
-						else//krishhh+
-							cse4589_print_and_log("\nThis client has not blocked any other clients\n");//krishhh+
+						}
 	
-						cse4589_print_and_log("[%s:END]\n", command);
+						cse4589_print_and_log("[%s:END]\n", command.c_str());
 					}
 
-					if(strcmp("STATISTICS", command) == 0) {
+					if("STATISTICS" == command && commandParams.size() == 1) {
 						vector<string> commandParams = extractParams(commandDummy, ' ');
-						cse4589_print_and_log("[%s:SUCCESS]\n", command);
+						cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 						for(int i=0; i<clientData.size(); i++) {
 							cse4589_print_and_log("%-5d%-35s%-8d%-8d%-8s\n", i+1, clientData[i].hostname.c_str(), clientData[i].num_msg_sent, clientData[i].num_msg_rcv, clientData[i].status.c_str());
 						}
-						cse4589_print_and_log("[%s:END]\n", command);
+						cse4589_print_and_log("[%s:END]\n", command.c_str());
 					}
 
 					free(commandWithNewLine);
