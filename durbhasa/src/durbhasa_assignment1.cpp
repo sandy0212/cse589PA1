@@ -23,7 +23,9 @@
 #include <iostream>
 #include <stdio.h>
 #include <fcntl.h>
-
+#include <vector>
+#include <string>
+#include <algorithm>
 #include "../include/global.h"
 #include "../include/logger.h"
 #include "commands.h"
@@ -93,13 +95,16 @@ client_info* getClientData(int client_fd) {
 
 client_info* getClientData(string ip) {
 	for(int i=0;i<clientData.size();i++) {
-		if(clientData[i].ip_addr == ip) return &clientData[i];
+		if(clientData[i].ip_addr == ip)
+		{  						
+		 return &clientData[i];
+		 }  						
 	}
-
 	return NULL;
 }
 
 client_info* getClientData(string ip, string port) {
+
 	for(int i=0;i<clientData.size();i++) {
 		if(clientData[i].ip_addr == ip && clientData[i].port == port) return &clientData[i];
 	}
@@ -126,9 +131,12 @@ vector<string> extractParams(string msg, char sep) {
 }
 
 bool checkIfIPBlocked(client_info* cd, string ip) {
+
   for (int i = 0; i < cd->blockedUser.size(); i++) {
     if (cd->blockedUser[i] == ip) {
+    {
       return true;
+    }
     }
   }
   return false;
@@ -237,8 +245,10 @@ int client(char **argv) {
 		}
 
 		if(FD_ISSET(fileno(stdin), &watch_list)) {
+
 			char *commandWithNewLine = (char*) malloc(sizeof(char)*CMD_SIZE);
 			memset(commandWithNewLine, '\0', CMD_SIZE);
+			
 			if(fgets(commandWithNewLine, CMD_SIZE-1, stdin) == NULL) {
 				cse4589_print_and_log("Please input a command\n");
 			}
@@ -246,7 +256,7 @@ int client(char **argv) {
 			std::string commandDummy(commandWithNewLine, commandWithNewLine + strlen(commandWithNewLine)-1);
 			std::string command = "";
 			command = extractCommand(commandDummy);
-			
+
 			if(checkAnyLowerCase(command)) {
 				cse4589_print_and_log("The command should be given in all capital letters\n");
 			}
@@ -276,6 +286,7 @@ int client(char **argv) {
 			}
 			
 			if ("LOGIN" == command) {
+
 				// struct sockaddr_in serv_addr;
 				struct addrinfo hints, *servAddrInfo;
 				memset(&hints, 0, sizeof hints);
@@ -289,6 +300,7 @@ int client(char **argv) {
 				int it = 0;
 				int word = 0;
 				string dummy = "";
+
 				while(it < commandDummy.size()) {
 					if(commandDummy[it] == ' ') {
 						if(word == 0) {
@@ -308,6 +320,7 @@ int client(char **argv) {
 				serv_port = dummy;
 
 				if (client_fd == 0) {
+					
 					getaddrinfo(serv_ip.c_str(), serv_port.c_str(), &hints, &servAddrInfo);
 					client_fd = socket(servAddrInfo->ai_family, servAddrInfo->ai_socktype, servAddrInfo->ai_protocol);
 					if (client_fd == -1) {
@@ -329,7 +342,7 @@ int client(char **argv) {
 				if(recvSize < 0) { 
 					cse4589_print_and_log("Recv Failed\n");
 				}
-
+				isLoggedIn=true;
 				clientData.clear();
 				data = extractParams(temp, '-');
 
@@ -536,8 +549,11 @@ int client(char **argv) {
 			if ("LOGOUT" == command) {
 				string msg = "LOGOUT " + ip + " " + port;
   				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  				isLoggedIn=false;
   				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
+  				close(client_fd);//krishhh+
+  				client_fd=0;//krishhh+
 			}
 
 			if("EXIT" == command) {
@@ -545,6 +561,7 @@ int client(char **argv) {
   				send(client_fd, msg.c_str(), strlen(msg.c_str()), 0);
   				cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
   				cse4589_print_and_log("[%s:END]\n", command.c_str());
+  				exit(0);//krishhh+
 			}
 
 		} else if (FD_ISSET(client_fd, &watch_list)) {
@@ -614,6 +631,7 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
   		string info = "SEND " + senderIP + " " + msg.substr(nonMsgLen, msg.length() - nonMsgLen);
   		string receiverIP = commandParams[1];
   		client_info* receiver_cd = getClientData(receiverIP);
+  		  		cse4589_print_and_log("\nSERVER block 2 -sender mean %s\n",senderIP.c_str());
   		if (receiver_cd != NULL && checkIfIPBlocked(receiver_cd, senderIP) == false) {
     		if (receiver_cd->status == "logged-in") {
       			send(receiver_cd->sock_fd, info.c_str(), strlen(info.c_str()), 0);
@@ -676,17 +694,24 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
 	else if(commandParams[0] == "BLOCK" && numberOfParams == 2) {
 		string destIP = commandParams[1];
 		string msg;
+
   		client_info* dest_client_info = getClientData(destIP);
   		client_info* sender_client_info = getClientData(new_client_fd);
+
   		if (dest_client_info == NULL || checkIfIPBlocked(sender_client_info, destIP)) {
+
     		msg = "BLOCKFAIL-";
     		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
 			return;
   		}
+
   		sender_client_info->blockedUser.push_back(destIP);
 
   		msg = "BLOCKSUCCESS-";
-  		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+  		if(send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0)<=0)
+  		{
+  			cse4589_print_and_log("\nSend failure from server in BLOCK case\n");//krishhh+
+  		}
 	}
 
 	else if(commandParams[0] == "UNBLOCK" && numberOfParams == 2) {
@@ -694,9 +719,13 @@ void handleServerEvents(const char *buffer, int new_client_fd) {
   		string msg;
 		client_info* dest_client_info = getClientData(destIP);
   		client_info* sender_client_info = getClientData(new_client_fd);
+
   		if (dest_client_info == NULL || !checkIfIPBlocked(sender_client_info, destIP)) {
     		msg = "UNBLOCKFAIL-";
-    		send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0);
+    		if(send(new_client_fd, msg.c_str(), strlen(msg.c_str()), 0)<0)//krishhh++
+    		{//krishhh+
+    			  cse4589_print_and_log("\nSend failure from server in UNBLOCK case\n");//krishhh+
+    		}//krishhh+
   		}
   		for (int i = 0; i < sender_client_info->blockedUser.size(); i++) {
     		if (sender_client_info->blockedUser[i] == destIP) {
@@ -771,8 +800,10 @@ int server(int argc, char **argv) {
 					char *command = (char *) calloc(strlen(commandWithNewLine), sizeof(char));
 					memcpy(command, commandWithNewLine, strlen(commandWithNewLine)-1);
 					command[strlen(commandWithNewLine)-1] = '\0';
-
 					std::string commandDummy(commandWithNewLine, commandWithNewLine + strlen(commandWithNewLine)-1);
+					std::string command_1 = ""; //krishhh+
+					command_1 = extractCommand(commandDummy);//krishhh+
+					strcpy(command,command_1.c_str()); //krishhh+
 
 					if(checkAnyLowerCase(&command[0])) {
 						cse4589_print_and_log("The command should be given in all capital letters\n");
@@ -802,19 +833,25 @@ int server(int argc, char **argv) {
 						cse4589_print_and_log("[%s:END]\n", command);
 					}
 
-					if(strcmp("BLOCKED", command) == 0) {
+
+					if(strcmp("BLOCKED", command) == 0)
+					 {
+
 						vector<string> commandParams = extractParams(commandDummy, ' ');
-						// if (checkIfIP(ip) < 0 || getHostData(ip) == NULL) {
-    					// 	cmdError(cmd);
-						//     return;
-  						// }
+						
   						client_info* clientInfo = getClientData(commandParams[1]);
 
   						cse4589_print_and_log("[%s:SUCCESS]\n", command);
-  						for (int i = 0; i < clientInfo->blockedUser.size(); ++i) {
-    						client_info* hd = getClientData(clientInfo->blockedUser[i]);
-    						cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",i+1, hd->hostname.c_str(), hd->ip_addr.c_str(), hd->port_num);
-  						}
+  						if(clientInfo !=NULL) //krishhhh+++
+  						{//krishhhh+
+  							for (int i = 0; i < clientInfo->blockedUser.size(); ++i) {
+    							client_info* hd = getClientData(clientInfo->blockedUser[i]);
+    							cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",i+1, hd->hostname.c_str(), hd->ip_addr.c_str(), hd->port_num);
+  							}
+						}//krishhhh+
+						else//krishhh+
+							cse4589_print_and_log("\nThis client has not blocked any other clients\n");//krishhh+
+	
 						cse4589_print_and_log("[%s:END]\n", command);
 					}
 
