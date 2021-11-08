@@ -23,9 +23,9 @@
 #include <iostream>
 #include <stdio.h>
 #include <fcntl.h>
-#include <vector>
-#include <string>
-#include <algorithm>
+#include <vector>//krishh+
+#include <string>//krishh+
+#include <algorithm>//krishh+
 #include "../include/global.h"
 #include "../include/logger.h"
 #include "commands.h"
