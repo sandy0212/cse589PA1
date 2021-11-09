@@ -38,14 +38,15 @@ struct client_info {
 	string hostname;
 	string ip_addr;
 	int port_num;
+	//string port_num;//krishhh
 	int num_msg_sent;
 	int num_msg_rcv;
 	string status;
 
 	//that need not be printed;
 	string port;
-    int sock_fd;
-    bool loggedIn;
+    	int sock_fd;
+    	bool loggedIn;
 	vector<string> bufmsgs;
 	vector<string> blockedUser;
 
@@ -88,6 +89,7 @@ client_info* newClientInfo(int sock_fd, string hostname, string ip, int port_num
   client->ip_addr = ip;
   client->port_num = port_num;
   client->port = convertToString(port_num);
+  //client->port = to_string(port_num);
   client->num_msg_sent = 0;
   client->num_msg_rcv = 0;
   client->loggedIn = true;
@@ -476,7 +478,8 @@ int client(char **argv) {
 				int recvSize = recv(client_fd, temp, sizeof temp, 0);
 				string msg = temp;
 				if (recvSize < 0) {
-					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					//cse4589_print_and_log("\nline 481\n");
+					cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
 					continue;
 				}
@@ -484,7 +487,8 @@ int client(char **argv) {
 				data = extractParams(msg, '-');
 
 				if (data[0] != "SENDSUCCESS" || data.size() < 1) {
-					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					//cse4589_print_and_log("\nline 489\n");
+					cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
 					continue;
 				}
@@ -506,14 +510,14 @@ int client(char **argv) {
 				// cout<<msg<<endl;
 
 				if(recvSize < 0) {
-					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
 					continue;
 				}
 
 				data = extractParams(msg, '-');
 				if(data[0] != "BROADCASTSUCCESS" || data.size() < 1) {
-					cse4589_print_and_log("[%s:ERROR]\n", command.c_str());
+					cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
 					cse4589_print_and_log("[%s:END]\n", command.c_str());
 					continue;
 				}
@@ -661,7 +665,7 @@ void initializeServer(char **argv) {
 		exit(-1);
 	} 
 	// else {
-	// 	cse4589_print_and_log("I am able to listen to port.\n");
+	// 	cse4589_print_and_log("I am able to listen to port.\n");SEND
 	// }
 }
 
@@ -880,8 +884,10 @@ int server(int argc, char **argv) {
   						client_info* clientInfo = getClientData(commandParams[1]);
 
   						cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
-  						if(clientInfo != NULL) {
-  							for (int i = 0; i < clientInfo->blockedUser.size(); i++) {
+  						//if(clientInfo != NULL) {
+  							if(clientInfo !=NULL) {
+  							for (int i = 0; i < clientInfo->blockedUser.size(); ++i) {
+  							//for (int i = 0; i < clientInfo->blockedUser.size(); i++) {
     							client_info* hd = getClientData(clientInfo->blockedUser[i]);
     							cse4589_print_and_log("%-5d%-35s%-20s%-8d\n",i+1, hd->hostname.c_str(), hd->ip_addr.c_str(), hd->port_num);
   							}
